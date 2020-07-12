@@ -173,3 +173,27 @@ class WeightedSoftmaxLoss(Loss):
             logits=tf.reshape(prediction_tensor, [-1, num_classes])))
 
         return tf.reduce_sum(per_row_cross_ent) * weight
+
+class WeightedFocalLoss(Loss):
+    def _compute_loss(self, prediction_tensor, target_tensor, weight):
+        alpha = 0.25
+        gamma = 2.0
+        # compute the focal loss
+        per_entry_cross_ent = (tf.nn.sigmoid_cross_entropy_with_logits(
+            labels=target_tensor, logits=prediction_tensor))
+        prediction_probabilities = tf.sigmoid(prediction_tensor)
+        p_t = ((target_tensor * prediction_probabilities) +
+               ((1 - target_tensor) * (1 - prediction_probabilities)))
+        modulating_factor = 1.0
+        if gamma:
+            modulating_factor = tf.pow(1.0 - p_t, gamma)
+        alpha_weight_factor = 1.0
+        if alpha is not None:
+            alpha_weight_factor = (target_tensor * alpha +
+                                   (1 - target_tensor) * (1 - alpha))
+        focal_cross_entropy_loss = (modulating_factor * alpha_weight_factor *
+                                    per_entry_cross_ent)
+
+        return tf.reduce_sum(focal_cross_entropy_loss) * weight
+
+

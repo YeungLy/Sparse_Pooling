@@ -1,12 +1,15 @@
 package avod.protos;
 
+import "avod/protos/layers.proto";
 message MiniBatchConfig {
 
     // Density threshold for removing empty anchors
     required int32 density_threshold = 1;
-
-    required MiniBatchRpnConfig rpn_config = 2;
-    required MiniBatchAvodConfig avod_config = 3;
+    
+    optional MiniBatchRpnConfig rpn_config = 2;
+    optional MiniBatchAvodConfig avod_config = 3;
+    optional MiniBatchRetinaNetConfig retinanet_config = 4;
+    optional bool use_retinanet = 5 [default = true];
 }
 
 message MiniBatchIouThresholds {
@@ -35,4 +38,16 @@ message MiniBatchAvodConfig {
     required int32 mini_batch_size = 2;
 }
 
+message MiniBatchRetinaNetConfig {
+    
+    repeated string pyramid_levels = 1; 
+    optional int32 input_bev_dims_h = 2 [default = 700];
+    optional int32 input_bev_dims_w = 3 [default = 800];
+
+    repeated float anchor_scales = 4;
+    repeated float anchor_ratios = 5;
+    optional string anchor_init_ry_type = 8 [default='90'];
+    required string iou_type = 6;
+    required MiniBatchIouThresholds iou_2d_thresholds = 7;
+}
 

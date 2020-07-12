@@ -6,9 +6,12 @@ message LayersConfig {
     required FeatureExtractor bev_feature_extractor = 1;
     required FeatureExtractor img_feature_extractor = 2;
 
-    required RPNLayersConfig rpn_config = 3;
-    required AVODLayersConfig avod_config = 4;
+    //for models
+    optional RPNLayersConfig rpn_config = 3;
+    optional AVODLayersConfig avod_config = 4;
+    optional RetinaNetLayersConfig retinanet_config = 5;
 }
+
 
 message FeatureExtractor {
     oneof feature_extractor {
@@ -18,9 +21,15 @@ message FeatureExtractor {
 
         PyramidLayersConfig img_vgg_pyr = 3;
         PyramidLayersConfig bev_vgg_pyr = 4;
+
+        ResnetFPNLayersConfig bev_resnet_fpn = 5;
+        ResnetFPNLayersConfig img_resnet_fpn = 6;
+
     }
 }
-
+//
+// Feature Extractor 
+//
 message VGGLayersConfig {
     // Conv layer 1 [repeat, num filter]
     repeated int32 vgg_conv1 = 1;
@@ -58,6 +67,19 @@ message PyramidLayersConfig {
     optional float l2_weight_decay = 6 [default = 0.0005];
 }
 
+message ResnetFPNLayersConfig{
+    // using which pyramid levels ?
+    required string resnet_name = 1;
+    repeated string pyramid_levels = 2; 
+    required float weight_decay = 3 [default = 0.0005];
+    optional bool use_p5_at_p6 = 4 [default=true];
+    optional bool use_relu_at_fusion = 5 [default=false];
+    optional bool load_from_pretrained = 6 [default=false];
+}
+
+//
+// Model
+//
 message RPNLayersConfig {
     // Anchor predictor layer configs
     // classification fc layer size
@@ -113,4 +135,8 @@ message FusionFcLayers {
 
     // Fusion type (early, late, deep)
     required string fusion_type = 6;
+}
+
+message RetinaNetLayersConfig {
+    optional string test = 1;
 }

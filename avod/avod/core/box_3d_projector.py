@@ -75,6 +75,7 @@ def project_to_bev(boxes_3d, bev_extents):
 
     x_extents_range = bev_extents[0][1] - bev_extents[0][0]
     z_extents_range = bev_extents[1][0] - bev_extents[1][1]
+    #bev image_x_axis = 3D x_axis, bev image_y_axis = -3D z_axis (y is down, y=0 corresponds to z=max_z)
     box_points_norm = points_shifted / [x_extents_range, z_extents_range]
 
     box_points = np.asarray(box_points, dtype=np.float32)
@@ -82,6 +83,89 @@ def project_to_bev(boxes_3d, bev_extents):
 
     return box_points, box_points_norm
 
+def project_to_bev_box(boxes_3d, bev_extents):
+    """
+    Projects an array of 3D boxes into bird's eye view
+
+    Args:
+        boxes_3d: list of 3d boxes in the format:
+            N x [x, y, z, l, w, h, ry]
+        bev_extents: xz extents of the 3d area
+            [[min_x, max_x], [min_z, max_z]]
+
+    Returns:
+        box: rotated box(x_center, y_center, x_dimension, y_dimension, ry)
+            N x [x_bev, y_bev, w_bev, h_bev, ry] - (N x 5)
+        box_points_norm: points normalized as a percentage of the map size
+            N x [[x0, y0], ... [x3, y3]] - (N x 4 x 2)
+    """
+
+    format_checker.check_box_3d_format(boxes_3d)
+
+    boxes_3d = np.array(boxes_3d, dtype=np.float32)
+    x = boxes_3d[:, 0]
+    z = boxes_3d[:, 2]
+    l = boxes_3d[:, 3]
+    w = boxes_3d[:, 4]
+    ry = boxes_3d[:, 6]
+
+    l_2 = l / 2.0
+    w_2 = w / 2.0
+
+    p0 = np.array([l_2, w_2])
+    p1 = np.array([-l_2, w_2])
+    p2 = np.array([-l_2, -w_2])
+    p3 = np.array([l_2, -w_2])
+    box_points = np.empty((len(boxes_3d), 4, 2))
+
+    for box_idx in range(len(boxes_3d)):
+        rot = ry[box_idx]
+
+        rot_mat = np.reshape([[np.cos(rot), np.sin(rot)],
+                              [-np.sin(rot), np.cos(rot)]],
+                             (2, 2))
+
+        box_x = x[box_idx]
+        box_z = z[box_idx]
+
+        box_xz = [box_x, box_z]
+
+        box_p0 = np.dot(rot_mat, p0[:, box_idx]) + box_xz
+        box_p1 = np.dot(rot_mat, p1[:, box_idx]) + box_xz
+        box_p2 = np.dot(rot_mat, p2[:, box_idx]) + box_xz
+        box_p3 = np.dot(rot_mat, p3[:, box_idx]) + box_xz
+
+        box_points[box_idx] = np.array([box_p0, box_p1, box_p2, box_p3])
+
+    # Calculate normalized box corners for ROI pooling
+    x_extents_min = bev_extents[0][0]
+    z_extents_min = bev_extents[1][1]  # z axis is reversed
+    points_shifted = box_points - [x_extents_min, z_extents_min]
+
+    x_extents_range = bev_extents[0][1] - bev_extents[0][0]
+    z_extents_range = bev_extents[1][0] - bev_extents[1][1]
+    #bev image_x_axis = 3D x_axis, bev image_y_axis = -3D z_axis (y is down, y=0 corresponds to z=max_z)
+    box_points_norm = points_shifted / [x_extents_range, z_extents_range]
+    box_points_norm = np.asarray(box_points_norm, dtype=np.float32)
+
+    box = np.vstack([x, z, l, w, ry]).transpose()
+    box_norm = box.copy()
+    box_shifted = box_norm[:, :2] - [x_extents_min, z_extents_min]
+    box_norm[:, :2] = box_shifted / [x_extents_range, z_extents_range]
+    #size normalize, dont have to shift.
+    #[WRONG!]box_norm[:, 2:4] = box_norm[:, 2:4] / [x_extents_range, z_extents_range]
+    box_norm[:, 2] = np.sqrt((box_points_norm[:, 0, 0] - box_points_norm[:, 1, 0])**2 + \
+                             (box_points_norm[:, 0, 1] - box_points_norm[:, 1, 1]) **2 )
+    box_norm[:, 3] = np.sqrt((box_points_norm[:, 1, 0] - box_points_norm[:, 2, 0])**2 + \
+                             (box_points_norm[:, 1, 1] - box_points_norm[:, 2, 1]) **2 )
+    #box_dir = box_points_norm[:, 1] - box_points_norm[:, 0]
+    #box_norm[:, -1] = np.arctan2(box_dir[:, 1],  box_dir[:, 0])
+    #rotate to corner first and then normalize != normalize first and then rotate to corner
+    box_norm = np.asarray(box_norm, dtype=np.float32)
+    #use to do transformation between BEV and 3D.
+    #norm_factor={'xmin':x_extents_min, 'zmin':z_extents_min, 'xrange':x_extents_range, 'zrange':z_extents_range}
+    #return box_norm, box_points_norm, norm_factor
+    return box_norm, box_points_norm
 
 def project_to_image_space(box_3d, calib_p2,
                            truncate=False, image_size=None,

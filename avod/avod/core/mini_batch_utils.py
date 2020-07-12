@@ -6,8 +6,8 @@ import tensorflow as tf
 import avod
 
 from avod.core.mini_batch_preprocessor import MiniBatchPreprocessor
+from avod.core.mini_batch_preprocessor_retinanet import MiniBatchPreprocessorForRetinanet
 from avod.core.minibatch_samplers import balanced_positive_negative_sampler
-
 
 class MiniBatchUtils:
     def __init__(self, dataset):
@@ -31,50 +31,104 @@ class MiniBatchUtils:
         self.config = self.kitti_utils_config.mini_batch_config
         self._density_threshold = self.config.density_threshold
 
-        # RPN mini batches
-        rpn_config = self.config.rpn_config
+        self.use_retinanet = self.config.use_retinanet 
+        if not self.use_retinanet:
+            # RPN mini batches
+            rpn_config = self.config.rpn_config
 
-        rpn_iou_type = rpn_config.WhichOneof('iou_type')
-        if rpn_iou_type == 'iou_2d_thresholds':
-            self.rpn_iou_type = '2d'
-            self.rpn_iou_thresholds = rpn_config.iou_2d_thresholds
+            rpn_iou_type = rpn_config.WhichOneof('iou_type')
+            if rpn_iou_type == 'iou_2d_thresholds':
+                self.rpn_iou_type = '2d'
+                self.rpn_iou_thresholds = rpn_config.iou_2d_thresholds
 
-        elif rpn_iou_type == 'iou_3d_thresholds':
-            self.rpn_iou_type = '3d'
-            self.rpn_iou_thresholds = rpn_config.iou_3d_thresholds
+            elif rpn_iou_type == 'iou_3d_thresholds':
+                self.rpn_iou_type = '3d'
+                self.rpn_iou_thresholds = rpn_config.iou_3d_thresholds
 
-        self.rpn_neg_iou_range = [self.rpn_iou_thresholds.neg_iou_lo,
-                                  self.rpn_iou_thresholds.neg_iou_hi]
-        self.rpn_pos_iou_range = [self.rpn_iou_thresholds.pos_iou_lo,
-                                  self.rpn_iou_thresholds.pos_iou_hi]
+            self.rpn_neg_iou_range = [self.rpn_iou_thresholds.neg_iou_lo,
+                                      self.rpn_iou_thresholds.neg_iou_hi]
+            self.rpn_pos_iou_range = [self.rpn_iou_thresholds.pos_iou_lo,
+                                      self.rpn_iou_thresholds.pos_iou_hi]
 
-        self.rpn_mini_batch_size = rpn_config.mini_batch_size
+            self.rpn_mini_batch_size = rpn_config.mini_batch_size
 
-        # AVOD mini batches
-        avod_config = self.config.avod_config
-        self.avod_iou_type = '2d'
-        self.avod_iou_thresholds = avod_config.iou_2d_thresholds
+            # AVOD mini batches
+            avod_config = self.config.avod_config
+            self.avod_iou_type = '2d'
+            self.avod_iou_thresholds = avod_config.iou_2d_thresholds
 
-        self.avod_neg_iou_range = [self.avod_iou_thresholds.neg_iou_lo,
-                                   self.avod_iou_thresholds.neg_iou_hi]
-        self.avod_pos_iou_range = [self.avod_iou_thresholds.pos_iou_lo,
-                                   self.avod_iou_thresholds.pos_iou_hi]
+            self.avod_neg_iou_range = [self.avod_iou_thresholds.neg_iou_lo,
+                                       self.avod_iou_thresholds.neg_iou_hi]
+            self.avod_pos_iou_range = [self.avod_iou_thresholds.pos_iou_lo,
+                                       self.avod_iou_thresholds.pos_iou_hi]
 
-        self.avod_mini_batch_size = avod_config.mini_batch_size
+            self.avod_mini_batch_size = avod_config.mini_batch_size
 
-        # Setup paths
-        self.mini_batch_dir = avod.root_dir() + '/data/mini_batches/' + \
-            'iou_{}/'.format(self.rpn_iou_type) + \
-            dataset.name + '/' + dataset.cluster_split + '/' + \
-            dataset.bev_source
+            # Setup paths
+            self.mini_batch_dir = avod.root_dir() + '/data/mini_batches/' + \
+                'iou_{}/'.format(self.rpn_iou_type) + \
+                dataset.name + '/' + dataset.cluster_split + '/' + \
+                dataset.bev_source
 
-        # Array column indices for saving to files
-        self.col_length = 9
-        self.col_anchor_indices = 0
-        self.col_ious = 1
-        self.col_offsets_lo = 2
-        self.col_offsets_hi = 8
-        self.col_class_idx = 8
+            # Array column indices for saving to files
+            self.col_length = 9
+            self.col_anchor_indices = 0
+            self.col_ious = 1
+            self.col_offsets_lo = 2
+            self.col_offsets_hi = 8
+            self.col_class_idx = 8
+
+        else:
+            #use retinanet
+            retinanet_config = self.config.retinanet_config
+            self.retinanet_pyramid_levels = retinanet_config.pyramid_levels
+            self.retinanet_iou_type = retinanet_config.iou_type 
+            self.retinanet_iou_thresholds = retinanet_config.iou_2d_thresholds
+            self.retinanet_neg_iou_range = [self.retinanet_iou_thresholds.neg_iou_lo,
+                                            self.retinanet_iou_thresholds.neg_iou_hi]
+            self.retinanet_pos_iou_range = [self.retinanet_iou_thresholds.pos_iou_lo,
+                                            self.retinanet_iou_thresholds.pos_iou_hi]
+ 
+            self.mini_batch_dir = avod.root_dir() + '/data/mini_batches/' + \
+                    'retinanet/' + 'iou_{}/'.format(self.retinanet_iou_type) + \
+                    dataset.name + '/' + dataset.cluster_split
+            #[x_bev, y_bev, w_bev, h_bev, angle_bev, h_img, angle_cls]
+            #[2:9] is all offset cols.
+            self.col_length = 12 #11
+            self.col_anchor_indices = 0
+            self.col_ious = 1
+            self.col_offsets_lo = 2
+            self.col_offsets_hi = 10 #9 
+            self.col_class_idx = 10 #9
+            anchor_strides = [2**(int(l[-1])) for l in \
+                    self.retinanet_pyramid_levels]
+            input_bev_dims_h = retinanet_config.input_bev_dims_h
+            input_bev_dims_w = retinanet_config.input_bev_dims_w
+            self.retinanet_bev_shape = (input_bev_dims_h, input_bev_dims_w)
+            image_shapes = [(int(np.ceil(input_bev_dims_h/s)), int(np.ceil(input_bev_dims_w/s)))\
+                    for s in anchor_strides]
+            anchor_base_sizes =  [2**(int(l[-1])+2) for l in \
+                    self.retinanet_pyramid_levels]
+            self.retinanet_anchor_params = {\
+                'anchor_strides': np.reshape(anchor_strides, (-1, 1)), \
+                  'anchor_base_sizes': anchor_base_sizes, \
+                  'anchor_scales': retinanet_config.anchor_scales,\
+                  'anchor_ratios': retinanet_config.anchor_ratios,\
+                  'anchor_init_ry_type': retinanet_config.anchor_init_ry_type,\
+                  'image_shapes': image_shapes, }
+
+    def preprocess_retinanet_mini_batches(self, indices):
+
+        if not self.use_retinanet:
+            raise ValueError('Doing retinanet preprocessing when we dont use retinanet!')
+        mini_batch_preprocessor = \
+                MiniBatchPreprocessorForRetinanet(self._dataset,
+                          self.mini_batch_dir,
+                          self.retinanet_anchor_params,
+                          self.retinanet_bev_shape,
+                          self.retinanet_neg_iou_range,
+                          self.retinanet_pos_iou_range)
+        mini_batch_preprocessor.preprocess(indices)
 
     def preprocess_rpn_mini_batches(self, indices):
         """Generates rpn mini batch info for the kitti dataset
@@ -110,6 +164,8 @@ class MiniBatchUtils:
                 sample_name is None
         """
         # Round values for nicer folder names
+        if self.use_retinanet:
+            anchor_strides = self.retinanet_anchor_params['anchor_strides']
         anchor_strides = np.round(anchor_strides[:, 0], 3)
 
         anchor_strides_str = \

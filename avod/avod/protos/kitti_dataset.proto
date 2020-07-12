@@ -36,6 +36,8 @@ message KittiDatasetConfig {
     repeated string aug_list = 10;
 
     optional bool output_indices = 11 [default = false];
+    //to choose stride by level.
+    optional string use_pyramid_level_at_SHPL = 12 [default = 'P2'];
 
     // KittiUtils configuration
     optional KittiUtilsConfig kitti_utils_config = 20;

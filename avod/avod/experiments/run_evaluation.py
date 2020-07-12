@@ -13,7 +13,9 @@ import avod.builders.config_builder_util as config_builder
 from avod.builders.dataset_builder import DatasetBuilder
 from avod.core.models.avod_model import AvodModel
 from avod.core.models.rpn_model import RpnModel
+from avod.core.models.retinanet_model import RetinanetModel
 from avod.core.evaluator import Evaluator
+from avod.core.evaluator_retinanet import EvaluatorRetinanet
 
 
 def evaluate(model_config, eval_config, dataset_config):
@@ -72,10 +74,18 @@ def evaluate(model_config, eval_config, dataset_config):
         elif model_name == 'rpn_model':
             model = RpnModel(model_config, train_val_test=eval_mode,
                              dataset=dataset)
+        elif model_name == 'retinanet_model':
+            model = RetinanetModel(model_config, train_val_test=eval_mode,
+                             dataset=dataset)
         else:
             raise ValueError('Invalid model name {}'.format(model_name))
 
-        model_evaluator = Evaluator(model,
+        if model_name == 'retinanet_model':
+            model_evaluator = EvaluatorRetinanet(model,
+                                    dataset_config,
+                                    eval_config)
+        else:
+            model_evaluator = Evaluator(model,
                                     dataset_config,
                                     eval_config)
 

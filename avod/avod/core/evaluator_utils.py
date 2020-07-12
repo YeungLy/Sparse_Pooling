@@ -40,9 +40,13 @@ def save_predictions_in_kitti_format(model,
 
     # 3D prediction directories
     kitti_predictions_3d_dir = predictions_root_dir + \
-        '/kitti_native_eval/' + \
+        '/kitti_predictions_3d/' + \
+        dataset.data_split + '/' + \
         str(score_threshold) + '/' + \
         str(global_step) + '/data'
+        #'/kitti_native_eval/' + \
+        #str(score_threshold) + '/' + \
+        #str(global_step) + '/data'
 
     if not os.path.exists(kitti_predictions_3d_dir):
         os.makedirs(kitti_predictions_3d_dir)
@@ -78,7 +82,7 @@ def save_predictions_in_kitti_format(model,
             np.savetxt(kitti_predictions_3d_file_path, [])
             continue
 
-        all_predictions = np.loadtxt(predictions_file_path)
+        all_predictions = np.loadtxt(predictions_file_path, ndmin=2)
 
         # # Swap l, w for predictions where w > l
         # swapped_indices = all_predictions[:, 4] > all_predictions[:, 3]
@@ -203,6 +207,19 @@ def set_up_summary_writer(model_config,
 
     global_summaries = set([])
     summaries = set(tf.get_collection(tf.GraphKeys.SUMMARIES))
+    #remove some visualize image summaries for inspect training not evaluation to short evaluation time.
+    for summary in summaries.copy():
+        name = summary.name
+        if name.find('vis_') != -1:
+            summaries.remove(summary) 
+        elif name.find('nms') != -1:
+            summaries.remove(summary) 
+        elif name.find('retinanet_losses') != -1:
+            summaries.remove(summary)
+
+    if len(summaries) < 1:
+        return summary_writer, None
+        
     summary_merged = summary_utils.summaries_to_keep(summaries,
                                                      global_summaries,
                                                      histograms=False,

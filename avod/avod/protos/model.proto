@@ -13,8 +13,10 @@ message ModelConfig {
 
     optional PathsConfig paths_config = 3;
     required InputConfig input_config = 4;
-    required RpnConfig rpn_config = 5;
-    required AvodConfig avod_config = 6;
+    optional RpnConfig rpn_config = 5;
+    optional AvodConfig avod_config = 6;
+    optional RetinaNetConfig retinanet_config = 15;
+    optional bool use_retinanet = 16 [default=false];
 
     // Label smoothing epsilon
     required float label_smoothing_epsilon = 7;
@@ -106,14 +108,34 @@ message AvodConfig {
     required string avod_box_representation = 6;
 }
 
+message RetinaNetConfig {
+
+    required float nms_iou_thresh = 1;
+    optional float nms_filtered_score = 2 [default=0.05];
+    required int32 nms_size = 3;
+    optional int32 refine_stage_num = 4 [default = 0];
+    repeated float refine_pos_iou_thresh = 10;
+    repeated float refine_neg_iou_thresh = 11;
+    // YLY: add sparse pooling layer in the network
+    optional bool use_sparse_pooling = 6 [default=false];
+    optional string use_pyramid_level_at_SHPL = 9 [default='P2'];
+    optional bool add_h = 13 [default=false];
+    optional bool add_angle = 14 [default=false];
+
+}
+
 message LossConfig {
     // RPN/AVOD Regression loss weight
     required float reg_loss_weight = 1;
-
-    // AVOD angle vector loss weight
-    required float ang_loss_weight = 2;
-
     // RPN/AVOD Classification loss weight
     required float cls_loss_weight = 3;
+    // AVOD angle vector loss weight
+    optional float ang_loss_weight = 2 [default=0.0];
+    optional float h_loss_weight = 6 [default=0.0];
+    //All about refine is optinal..
+    repeated float refine_cls_loss_weight = 4;
+    repeated float refine_reg_loss_weight = 5;
+    repeated float refine_ang_loss_weight = 7;
+    repeated float refine_h_loss_weight = 8;
 }
 

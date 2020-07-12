@@ -73,11 +73,11 @@ class KittiDataset:
 
         # Get all files and folders in dataset directory
         all_files = os.listdir(self.dataset_dir)
-        all_split_files = os.listdir(os.path.join(os.path.dirname(self.dataset_dir), 'ImageSets/'))
+        #all_split_files = os.listdir(os.path.join(self.dataset_dir, 'ImageSets/'))
 
         # Get possible data splits from txt files in dataset folder
         possible_splits = []
-        for file_name in all_split_files:
+        for file_name in all_files:
             if fnmatch.fnmatch(file_name, '*.txt'):
                 possible_splits.append(os.path.splitext(file_name)[0])
         # This directory contains a readme.txt file, remove it from the list
@@ -147,7 +147,8 @@ class KittiDataset:
 
     @property
     def bev_image_dir(self):
-        raise NotImplementedError("BEV images not saved to disk yet!")
+        #raise NotImplementedError("BEV images not saved to disk yet!")
+        return self.bev_img_dir
 
     def _check_dataset_dir(self):
         """Checks that dataset directory exists in the file system
@@ -169,6 +170,7 @@ class KittiDataset:
         self.planes_dir = self._data_split_dir + '/planes'
         self.velo_dir = self._data_split_dir + '/velodyne'
         self.depth_dir = self._data_split_dir + '/depth_' + str(self._cam_idx)
+        self.bev_img_dir = self._data_split_dir + '/bev_image' 
 
         # Labels are always in the training folder
         self.label_dir = self.dataset_dir + \
@@ -222,7 +224,8 @@ class KittiDataset:
             A list of sample names (file names) read from
             the .txt file corresponding to the data split
         """
-        set_file = os.path.join(os.path.dirname(self.dataset_dir), 'ImageSets/') + data_split + '.txt'
+        set_file = os.path.join(self.dataset_dir, data_split + '.txt')
+        #set_file = os.path.join(os.path.dirname(self.dataset_dir), 'ImageSets/') + data_split + '.txt'
         with open(set_file, 'r') as f:
             sample_names = f.read().splitlines()
 
@@ -321,6 +324,8 @@ class KittiDataset:
                     self.kitti_utils.class_str_to_index(obj_label.type)
                     for obj_label in obj_labels]
                 label_classes = np.asarray(label_classes, dtype=np.int32)
+                label_h2d = [
+                    obj_label.y2 - obj_label.y1 for obj_label in obj_labels]
 
                 # Return empty anchors_info if no ground truth after filtering
                 if len(label_boxes_3d) == 0:
@@ -340,6 +345,7 @@ class KittiDataset:
                         label_anchors = np.zeros((1, 6))
                         label_boxes_3d = np.zeros((1, 7))
                     label_classes = np.zeros(1)
+                    label_h2d = np.zeros(1)
                 else:
                     label_anchors = box_3d_encoder.box_3d_to_anchor(
                         label_boxes_3d, ortho_rotate=True)
@@ -360,19 +366,27 @@ class KittiDataset:
             height_maps = bev_images.get('height_maps')
             density_map = bev_images.get('density_map')
             bev_input = np.dstack((*height_maps, density_map))
+            #shape: (H, W, C)
 
             #import pdb
             #pdb.set_trace()
             #WZN produce input for sparse pooling
             if self.output_indices:
-                sparse_pooling_input1 = produce_sparse_pooling_input(gen_sparse_pooling_input_avod(pts_in_voxel,voxel_indices,
-                    stereo_calib,[image_shape[1],image_shape[0]],bev_input.shape[0:2]),stride=[1,1])
+                feat_stride = 2 ** (int(self.config.use_pyramid_level_at_SHPL[-1]))
+                spinput = gen_sparse_pooling_input_avod(pts_in_voxel, voxel_indices, stereo_calib, \
+                        [image_shape[1], image_shape[0]], bev_input.shape[0:2])
+                spinput = produce_sparse_pooling_input(spinput, stride=[feat_stride, feat_stride])
+                sparse_pooling_input = [spinput]
+
+                #sparse_pooling_input1 = produce_sparse_pooling_input(gen_sparse_pooling_input_avod(pts_in_voxel,voxel_indices,
+                #    stereo_calib,[image_shape[1],image_shape[0]],bev_input.shape[0:2]),stride=[4,4]) #for retinaNet
+                    #stereo_calib,[image_shape[1],image_shape[0]],bev_input.shape[0:2]),stride=[1,1])
                 #WZN: Note here avod padded the vgg input by 4, so add it
-                bev_input_padded = np.copy(bev_input.shape[0:2])
-                bev_input_padded[0] = bev_input_padded[0]+4
-                sparse_pooling_input2 = produce_sparse_pooling_input(gen_sparse_pooling_input_avod(pts_in_voxel,voxel_indices,
-                    stereo_calib,[image_shape[1],image_shape[0]],bev_input_padded),stride=[8,8])
-                sparse_pooling_input = [sparse_pooling_input1,sparse_pooling_input2]
+                #bev_input_padded = np.copy(bev_input.shape[0:2])
+                #bev_input_padded[0] = bev_input_padded[0]+4
+                #sparse_pooling_input2 = produce_sparse_pooling_input(gen_sparse_pooling_input_avod(pts_in_voxel,voxel_indices,
+                #    stereo_calib,[image_shape[1],image_shape[0]],bev_input_padded),stride=[8,8])
+                #sparse_pooling_input = [sparse_pooling_input1,sparse_pooling_input2]
             else:
                 sparse_pooling_input = None
 
@@ -380,6 +394,7 @@ class KittiDataset:
                 constants.KEY_LABEL_BOXES_3D: label_boxes_3d,
                 constants.KEY_LABEL_ANCHORS: label_anchors,
                 constants.KEY_LABEL_CLASSES: label_classes,
+                constants.KEY_LABEL_H2D: label_h2d,
 
                 constants.KEY_IMAGE_INPUT: image_input,
                 constants.KEY_BEV_INPUT: bev_input,

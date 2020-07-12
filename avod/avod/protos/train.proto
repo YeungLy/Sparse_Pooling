@@ -19,6 +19,7 @@ message TrainConfig {
     optional uint32 checkpoint_interval = 4 [default = 50];
     optional uint32 max_checkpoints_to_keep = 5 [default = 10];
     optional bool overwrite_checkpoints = 6 [default = false];
+    optional bool load_pretrained_backbone = 15 [default = false];
 
     // Summary options
     required uint32 summary_interval = 7 [default = 10];

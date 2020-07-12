@@ -194,3 +194,34 @@ def check_box_4c_format(input_data):
     else:
         raise TypeError('Given input is not of valid types.'
                         '(i.e. np.ndarray or tf.Tensor)')
+
+
+def check_anchor_bev_format(input_data):
+    """Checks for correct bev anchor format. If not proper type, raises error.
+
+    Args:
+        input_data: input numpy array or tensor to check for valid anchor format
+    """
+
+    # Check type as either tensor or numpy.ndarray
+    if isinstance(input_data, np.ndarray):
+        # Check for size for numpy array form (N x 6)
+        if input_data.ndim == 2:
+            if input_data.shape[1] != 5:
+                raise TypeError('Given input does not have valid number of '
+                                'attributes. Should be N x 5 for bev anchor.')
+        elif input_data.ndim == 1:
+            if input_data.shape[0] != 5:
+                raise TypeError('Given input does not have valid number of '
+                                'attributes. Should be 5 for bev anchor.')
+    elif isinstance(input_data, tf.Tensor):
+        # if tensor, check the shape
+        if isinstance(input_data, tf.Tensor):
+            if input_data.shape[1] != 5:
+                raise TypeError('Given input does not have valid number of '
+                                'attributes. Should be N x 5 for bev anchor.')
+    else:
+        raise TypeError('Given input is not of valid types.'
+                        '(i.e. np.ndarray or tf.Tensor)')
+
+
