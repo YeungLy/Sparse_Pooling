@@ -104,9 +104,11 @@ class BevSlices(bev_generator.BevGenerator):
             # output the rotated indices as the map is rotated 90deg
             if output_indices:
                 voxel_indices_rot = np.copy(voxel_indices)
-                voxel_indices_rot[:,1] = voxel_grid_2d.num_divisions[2] - voxel_indices_rot[:,1]
+                #BEV z axis is reversed, if z=70(max_extent), voxel_indices[:, 1]should be 0 at BEV image.
+                voxel_indices_rot[:,1] = voxel_grid_2d.num_divisions[2] - voxel_indices_rot[:,1] 
                 #voxel_indices_rot = voxel_indices_rot[:,[1,0]]
                 voxel_indices_stack.append(voxel_indices_rot)
+                #only choose one point at each voxel
                 points_in_voxel_stack.append(voxel_grid_2d.unique_pts)
 
 

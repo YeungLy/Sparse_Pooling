@@ -1,6 +1,7 @@
 #!/usr/bin/env python3.5
 import numpy as np
 from PIL import Image, ImageDraw
+import cv2
 
 
 def two_d_iou(box, boxes):
@@ -43,6 +44,36 @@ def two_d_iou(box, boxes):
 
     return iou.round(3)
 
+def two_d_rotate_iou(box, boxes):
+    """Compute 2D rotate IOU between a 2D bounding box 'box' and a list
+
+    :param box: a numpy array in the form of [xc, yc, w, h, angle] where (xc,yc) are
+    image coordinates of the center of the bounding box, and (w, h)
+    are the size of the bounding box and angle is the rotate angle of the bbox(in rad format).
+
+    :param boxes: a numpy array formed as a list of boxes in the form
+    [[xc, yc, w, h, angle], [xc, yc, w, h, angle]].
+
+    :return iou: a numpy array containing 2D rotate IOUs between box and every element
+    in numpy array boxes.
+    """
+
+    iou = np.zeros(len(boxes), np.float64)
+    #non_empty = np.zeros(len(boxes), np.bool)
+    rect1 = ((box[0], box[1]), (box[2], box[3]), box[4]*180/np.pi)
+    area1 = box[2] * box[3]
+    for i, box2 in enumerate(boxes):
+        rect2 = ((box2[0], box2[1]), (box2[2], box2[3]), box2[4]*180/np.pi)
+        int_pts = cv2.rotatedRectangleIntersection(rect1, rect2)[1]
+        if int_pts is not None:
+            order_pts = cv2.convexHull(int_pts, returnPoints=True)
+            int_area = cv2.contourArea(order_pts)
+            area2 = box2[2] * box2[3]
+            union_area = area1 + area2 - int_area
+            iu = int_area * 1.0 / union_area
+            iou[i] = iu
+
+    return iou.round(3)
 
 def three_d_iou(box, boxes):
     """Computes approximate 3D IOU between a 3D bounding box 'box' and a list

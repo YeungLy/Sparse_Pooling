@@ -14,7 +14,10 @@ def do_preprocessing(dataset, indices):
         mini_batch_utils.mini_batch_dir))
 
     # Generate all mini-batches, this can take a long time
-    mini_batch_utils.preprocess_rpn_mini_batches(indices)
+    if mini_batch_utils.use_retinanet:
+        mini_batch_utils.preprocess_retinanet_mini_batches(indices)
+    else:
+        mini_batch_utils.preprocess_rpn_mini_batches(indices)
 
     print("Mini batches generated")
 
@@ -105,7 +108,7 @@ def main(dataset=None):
     process_car = True   # Cars
     process_ped = False  # Pedestrians
     process_cyc = False  # Cyclists
-    process_ppl = True   # People (Pedestrians + Cyclists)
+    process_ppl = False   # People (Pedestrians + Cyclists)
     process_unittest = False
 
     # Number of child processes to fork, samples will

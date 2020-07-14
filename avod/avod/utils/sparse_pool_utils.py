@@ -38,14 +38,17 @@ def produce_sparse_pooling_input(input_dict,M_val=None,stride=[1,1]):
     bv_size = np.floor(np.array(bv_size)/stride[1]) #this assumes all paddings are 'Valid'
     bv_index_down = np.floor(bv_index/stride[1])
     #bv_size is HxW, bv_index is WxH
+    #bv_index_down same as voxel indices, is (x,z)
+    #bv_index1_pool, z*800(bv_size_w)+x, shape is (bv_index_down.shape[0], ) 
     bv_index1_pool = (bv_index_down[:,1]*bv_size[1]+bv_index_down[:,0]).astype(int)
     ind_inside = bv_index1_pool<int(bv_size[0]*bv_size[1])
 
     img_index_flip_pool = img_index_flip_pool[ind_inside]
     bv_index1_pool = bv_index1_pool[ind_inside]
-    N = bv_index1_pool.shape[0]
-
+    N = bv_index1_pool.shape[0] #number of valid voxeles
+    #Mij_pool is (bv_index <-> img_index at pooled img feature map at sparse_pool_op()'s img_pooled_tf.),
     Mij_pool = np.vstack((bv_index1_pool,np.array(range(N)))).transpose()
+#N is number of valid voxeles, same as np.flat(img_index_flip_pool).shape
     M_size = np.array([bv_size[0]*bv_size[1],N]).astype(int)
 
     #import pdb
@@ -93,6 +96,8 @@ def sparse_pool_layer(inputs,feature_depths, M, img_index_flip = None ,bv_index 
 def _sparse_pool_op(M,input,source_index,pooled_size):
     #0 is sparse transformation matrix, 1 is source feature, 2 is scource pooling index
     #only support batch size 1
+#input feature map shape : (N, H, W, C)
+#source_index shape is (num_valid_voxels, 3), the first column is all zero, for the first sample at batch, the other two column is for (H, W)
     img_pooled_tf = tf.gather_nd(input,source_index)
     bv_flat_tf = tf.sparse_tensor_dense_matmul(M,img_pooled_tf)
     return tf.reshape(bv_flat_tf,pooled_size)

@@ -6,11 +6,13 @@ DetectionModel.
 import datetime
 import os
 import tensorflow as tf
+from tensorflow.python.client import timeline
 import time
-
+import avod
 from avod.builders import optimizer_builder
 from avod.core import trainer_utils
 from avod.core import summary_utils
+from tensorflow.python import debug as tfdbg
 
 slim = tf.contrib.slim
 
@@ -75,6 +77,7 @@ def train(model, train_config):
     ##############################
     # Setup loss
     ##############################
+
     losses_dict, total_loss = model.loss(prediction_dict)
 
     # Optimizer
@@ -93,7 +96,7 @@ def train(model, train_config):
 
     # Save checkpoints regularly.
     saver = tf.train.Saver(max_to_keep=max_checkpoints,
-                           pad_step_number=True)
+                       pad_step_number=True)
 
     # Add the result of the train_op to the summary
     tf.summary.scalar("training_loss", train_op)
@@ -109,6 +112,7 @@ def train(model, train_config):
                           tf.contrib.memory_stats.MaxBytesInUse())
 
     summaries = set(tf.get_collection(tf.GraphKeys.SUMMARIES))
+    sm_name = [sm.name for sm in summaries]
     summary_merged = summary_utils.summaries_to_keep(
         summaries,
         global_summaries,
@@ -116,6 +120,12 @@ def train(model, train_config):
         input_imgs=summary_img_images,
         input_bevs=summary_bev_images
     )
+    # Create init op
+    init = tf.group(
+            tf.global_variables_initializer(),
+            tf.local_variables_initializer(),
+            )
+    init = tf.global_variables_initializer()
 
     allow_gpu_mem_growth = train_config.allow_gpu_mem_growth
     if allow_gpu_mem_growth:
@@ -132,22 +142,40 @@ def train(model, train_config):
     train_writer = tf.summary.FileWriter(logdir + '/' + datetime_str,
                                          sess.graph)
 
-    # Create init op
-    init = tf.global_variables_initializer()
-
+    init_from_pretrained_backbone = False
     # Continue from last saved checkpoint
     if not train_config.overwrite_checkpoints:
         trainer_utils.load_checkpoints(checkpoint_dir,
                                        saver)
         if len(saver.last_checkpoints) > 0:
             checkpoint_to_restore = saver.last_checkpoints[-1]
+            print('restore from last checkpoint {}'.format(\
+                    checkpoint_to_restore))
             saver.restore(sess, checkpoint_to_restore)
         else:
             # Initialize the variables
             sess.run(init)
+            if train_config.load_pretrained_backbone:
+                init_from_pretrained_backbone = True
     else:
         # Initialize the variables
         sess.run(init)
+        if train_config.load_pretrained_backbone:
+            init_from_pretrained_backbone = True
+
+    if init_from_pretrained_backbone:
+        restore_variables, backbone_name = model.restore_pretrained_backbone_variables()
+        pretrained_backbone_ckpt_path = avod.root_dir() + \
+                '/data/pretrained_backbone/resnet/{}.ckpt'.format(backbone_name)
+        #only for pretrained backbone
+        restorer = tf.train.Saver(var_list=restore_variables)
+        print('restore from pretrianed backbone: {}'.format(\
+                pretrained_backbone_ckpt_path))
+        restorer.restore(sess, pretrained_backbone_ckpt_path)
+ 
+    # Open tf debug
+    #sess = tfdbg.LocalCLIDebugWrapperSession(sess)
+    #sess.add_tensor_filter("has_inf_or_nan", tfdbg.has_inf_or_nan)
 
     # Read the global step if restored
     global_step = tf.train.global_step(sess,
@@ -156,7 +184,8 @@ def train(model, train_config):
         global_step, max_iterations))
 
 
-
+    run_metadata = tf.RunMetadata()
+    run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
     # Main Training Loop
     last_time = time.time()
     for step in range(global_step, max_iterations + 1):
@@ -193,6 +222,10 @@ def train(model, train_config):
             train_op_loss, summary_out = sess.run(
                 [train_op, summary_merged], feed_dict=feed_dict)
 
+            #train_op_loss, summary_out = sess.run(
+            #    [train_op, summary_merged], feed_dict=feed_dict, \
+            #    options=run_options, run_metadata=run_metadata)
+
             print('Step {}, Total Loss {:0.3f}, Time Elapsed {:0.3f} s'.format(
                 step, train_op_loss, time_elapsed))
             train_writer.add_summary(summary_out, step)
@@ -200,6 +233,17 @@ def train(model, train_config):
         else:
             # Run the train op only
             sess.run(train_op, feed_dict)
+
+            #sess.run(train_op, feed_dict,\
+            #    options=run_options, run_metadata=run_metadata)
+
+        #Timeline profile
+        #tl = timeline.Timeline(run_metadata.step_stats)
+        #ctf = tl.generate_chrome_trace_format()
+        #with open('timeline.json', 'w') as wd:
+        #    wd.write(ctf)
+
+
 
     # Close the summary writers
     train_writer.close()
