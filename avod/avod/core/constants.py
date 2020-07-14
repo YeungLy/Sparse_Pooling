@@ -1,6 +1,7 @@
 KEY_LABEL_BOXES_3D = 'label_boxes_3d'
 KEY_LABEL_ANCHORS = 'label_anchors'
 KEY_LABEL_CLASSES = 'label_classes'
+KEY_LABEL_H2D = 'label_h2d'
 
 KEY_IMAGE_INPUT = 'image_input'
 KEY_BEV_INPUT = 'bev_input'

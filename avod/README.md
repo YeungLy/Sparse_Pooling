@@ -22,6 +22,7 @@ Some result files shown in `scripts/results` compare the some preliminary perfor
 
 ### Changed:
 `bev_slices.py`: See code under `#WZN`. Add additional inputs of voxel indices for Sparse Pooling  
+`kitti_dataset.py`: See code under `#WZN`. Add sparse pooling input for each sample.
 `rpn_model.py`:  See code under `#WZN`. Add placeholders and Sparse Pooling layer before rpn (controled by new parameters in config)  
 `model.proto`:   Add 5 more parameters to control Sparse Pooling
 

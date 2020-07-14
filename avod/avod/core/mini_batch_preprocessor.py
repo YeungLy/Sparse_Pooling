@@ -42,7 +42,8 @@ class MiniBatchPreprocessor(object):
         self._area_extents = self._dataset.kitti_utils.area_extents
         self._anchor_strides = anchor_strides
 
-        self._density_threshold = density_threshold
+        self._density_threshold = 1
+        #self._density_threshold = density_threshold
         self._negative_iou_range = neg_iou_3d_range
         self._positive_iou_range = pos_iou_3d_range
 
@@ -190,6 +191,7 @@ class MiniBatchPreprocessor(object):
 
         if indices is None:
             indices = np.arange(len(all_samples))
+        indices = indices[:5]
         num_samples = len(indices)
 
         # For each image in the dataset, save info on the anchors
@@ -251,11 +253,12 @@ class MiniBatchPreprocessor(object):
 
                 all_anchor_boxes_3d.extend(grid_anchor_boxes_3d)
 
-            # Filter empty anchors
+            # Filter empty anchors (whose pts num < density_threshold)
             all_anchor_boxes_3d = np.asarray(all_anchor_boxes_3d)
             anchors = box_3d_encoder.box_3d_to_anchor(all_anchor_boxes_3d)
             empty_anchor_filter = anchor_filter.get_empty_anchor_filter_2d(
                 anchors, vx_grid_2d, self._density_threshold)
+            print(f'Non empty anchor: {np.sum(empty_anchor_filter)} / {len(anchors)}, sample_name: {sample_name}')
 
             # Calculate anchor info
             anchors_info = self._calculate_anchors_info(

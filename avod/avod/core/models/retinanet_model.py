@@ -228,8 +228,10 @@ class RetinanetModel(model.DetectionModel):
             # Summary Images
             bev_summary_images = tf.split(
                 bev_input_placeholder, self._bev_depth, axis=2)
-            tf.summary.image("bev_maps", bev_summary_images,
-                             max_outputs=self._bev_depth)
+            #tf.summary.image("bev_maps", bev_summary_images,
+            tf.summary.image("bev_maps", self._bev_preprocessed,
+                             max_outputs=2)
+                             #max_outputs=self._bev_depth)
 
         with tf.variable_scope('img_input'):
             # Take variable size input images
@@ -247,6 +249,10 @@ class RetinanetModel(model.DetectionModel):
 
             # Summary Image
             tf.summary.image("rgb_image", self._img_preprocessed,
+                             max_outputs=2)
+            img_bilinear_resized = tf.image.resize_bilinear(
+                    self._img_input_batches, self._img_pixel_size)
+            tf.summary.image("rgb_image_bilinear", img_bilinear_resized,
                              max_outputs=2)
 
         #WZN: define sparse pooling inputs
@@ -439,12 +445,13 @@ class RetinanetModel(model.DetectionModel):
                 fcn_reg_h = tf.reshape(fcn_reg_h, [-1, 2], name='h3d/reshape')
             #num of angle classes is 2, one for head and another for tail
             if add_angle:
+                    #biases_initializer=subnet_bias_initializer,
                 fcn_reg_angle_cls = slim.conv2d(inputs=fcn_reg_conv2d,
                     num_outputs=2 * num_anchors_per_location,
                     kernel_size=[3, 3],
                     stride=1, 
                     weights_initializer=subnet_weights_initializer,
-                    biases_initializer=subnet_bias_initializer,
+                    biases_initializer=final_conv_bias_initializer,
                     scope='angle_cls',
                     activation_fn=None,)
                 fcn_reg_angle_cls = tf.reshape(fcn_reg_angle_cls, [-1, 2], name='angle_cls/reshape')
@@ -594,6 +601,8 @@ class RetinanetModel(model.DetectionModel):
 
         bev_feature_pyramids = self.bev_feature_pyramids
         img_feature_pyramids = self.img_feature_pyramids
+
+        #summary_utils.add_feature_maps_from_dict(bev_feature_pyramids, self._feature_pyramid_levels[0])
 
         # TODO: move this section into an separate AnchorPredictor class
         with tf.variable_scope('anchor_predictor', 'ap', bev_feature_pyramids):
@@ -945,7 +954,7 @@ class RetinanetModel(model.DetectionModel):
         if self._train_val_test in ["train", "val"]:
 
             # sample_index should be None
-            if sample_index is not None:
+            if sample_index is not None and self._train_val_test in ['train']:
                 raise ValueError('sample_index should be None. Do not load '
                                  'particular samples during train or val')
 
@@ -1365,31 +1374,10 @@ class RetinanetModel(model.DetectionModel):
 
     def _build_refine_targets(self, gt_anchors, anchors, refine_stage_idx, add_h, add_angle):
         with tf.variable_scope('iou'):
-            iou_type = '2d_rotate'
-            if iou_type == '2d':
-                #anchors_for_2d_iou_h = box_bev_encoder.box_bev_to_iou_h_format(anchors)
-                anchors_for_2d_iou_h = tf.py_func(box_bev_encoder.box_bev_to_iou_h_format,
-                        inp=[anchors], Tout=tf.float32)
-                gt_anchors_for_2d_iou_h = tf.py_func(box_bev_encoder.box_bev_to_iou_h_format,
-                        inp=[gt_anchors], Tout=tf.float32)
-                anchors_for_2d_iou_h = tf.reshape(anchors_for_2d_iou_h,
-                        (-1, 4))
-                gt_anchors_for_2d_iou_h = tf.reshape(gt_anchors_for_2d_iou_h,
-                        (-1, 4))
-                anchors_h_tf_order = \
-                    anchor_projector.reorder_projected_boxes(anchors_for_2d_iou_h)
-                gt_anchors_h_tf_order = \
-                    anchor_projector.reorder_projected_boxes(gt_anchors_for_2d_iou_h)
-                gt_anchor_box_list = box_list.BoxList(gt_anchors_h_tf_order)
-                anchor_box_list = box_list.BoxList(anchors_h_tf_order)
-                ious = box_list_ops.iou(gt_anchor_box_list, anchor_box_list)
-            elif iou_type == '2d_rotate':
-                device_id = 0
-                ious = tf.py_func(rotate_iou.calculate_rotate_iou,
-                        inp=[gt_anchors, anchors, device_id],
-                        Tout=tf.float32)
-            else:
-                raise NotImplementedError(f'Invalid iou_type: {iou_type}, should be [2d, 2d_rotate]')
+            device_id = 0
+            ious = tf.py_func(rotate_iou.calculate_rotate_iou,
+                    inp=[gt_anchors, anchors, device_id],
+                    Tout=tf.float32)
             max_ious = tf.reduce_max(ious, axis=0)
             max_ious = tf.reshape(max_ious, (-1, ))
             max_iou_indices = tf.argmax(ious, axis=0)
@@ -1523,7 +1511,8 @@ class RetinanetModel(model.DetectionModel):
                 if pred_results[self.PRED_OFFSETS_H] is not None:
                     vis_top_h = tf.boolean_mask(top_anchor_h, vis_mask)
                 else:
-                    vis_top_h = tf.ones(tf.shape(vis_top_anchors)[0]) * 1.65 #use default value
+                    vis_top_h = anchor_bev_encoder.get_default_anchor_h(
+                            tf.shape(vis_top_anchors)[0], 'tf')
                 if pred_results[self.PRED_OFFSETS_ANGLE_CLS] is not None:
                     vis_top_angle_cls = tf.boolean_mask(top_anchor_angle_cls, vis_mask)
                     vis_top_angle_cls = tf.reshape(vis_top_angle_cls, (-1, ))

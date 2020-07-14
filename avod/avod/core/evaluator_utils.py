@@ -210,11 +210,12 @@ def set_up_summary_writer(model_config,
     #remove some visualize image summaries for inspect training not evaluation to short evaluation time.
     for summary in summaries.copy():
         name = summary.name
-        if name.find('vis_') != -1:
-            summaries.remove(summary) 
-        elif name.find('nms') != -1:
-            summaries.remove(summary) 
-        elif name.find('retinanet_losses') != -1:
+        #if name.find('vis_') != -1:
+        #    summaries.remove(summary) 
+        #elif name.find('nms') != -1:
+        #    summaries.remove(summary) 
+        #elif name.find('retinanet_losses') != -1:
+        if name.find('retinanet_losses') != -1:
             summaries.remove(summary)
 
     if len(summaries) < 1:

@@ -1,6 +1,6 @@
 """Common functions for evaluating checkpoints.
 """
-
+import datetime
 import time
 import os
 import subprocess
@@ -117,6 +117,15 @@ class EvaluatorRetinanet:
             self.summary_writer, self.summary_merged = \
                 evaluator_utils.set_up_summary_writer(self.model_config,
                                                       self._sess)
+            logdir = self.paths_config.logdir
+            if not os.path.exists(logdir):
+                os.makedirs(logdir)
+
+            logdir = logdir + '/eval'
+
+            datetime_str = str(datetime.datetime.now())+'sample2'
+            self.summary_writer2 = tf.summary.FileWriter(logdir + '/' + datetime_str)
+
 
         else:
             self._loss_dict = None
@@ -183,6 +192,7 @@ class EvaluatorRetinanet:
         while current_epoch == self.model.dataset.epochs_completed:
             # Keep track of feed_dict speed
             start_time = time.time()
+            #feed_dict = self.model.create_feed_dict(sample_index=sample_index)
             feed_dict = self.model.create_feed_dict()
             feed_dict_time = time.time() - start_time
 
@@ -196,6 +206,8 @@ class EvaluatorRetinanet:
                 "/{}.txt".format(sample_name)
 
             num_valid_samples += 1
+            #if num_valid_samples > 1:
+            #    break
             print("Step {}: {} / {}, Inference on sample {}".format(
                 global_step, num_valid_samples, num_samples,
                 sample_name))
@@ -212,7 +224,10 @@ class EvaluatorRetinanet:
                                         self.summary_merged],
                                        feed_dict=feed_dict)
  
-                    self.summary_writer.add_summary(summary_out, global_step)
+                    if num_valid_samples == 2 and num_samples == 2:
+                        self.summary_writer2.add_summary(summary_out, global_step)
+                    else:
+                        self.summary_writer.add_summary(summary_out, global_step)
 
                 else:
                     print('start inference without smry:')
@@ -273,7 +288,8 @@ class EvaluatorRetinanet:
             self.save_prediction_losses_results(sum_losses, num_valid_samples, \
                     global_step, predictions_base_dir)
             if self.do_kitti_native_eval:
-                self.run_kitti_native_eval(global_step)
+                pass
+                #self.run_kitti_native_eval(global_step)
 
         else:
             # Test mode --> train_val_test == 'test'
@@ -377,7 +393,7 @@ class EvaluatorRetinanet:
         number_of_evaluations = 0
         #Dont have to add summary(for model inference at each sample) at repeated evaluation.. 
         #only care avg loss at each ckpt step.
-        self.summary_merged = None
+        #self.summary_merged = None
         evaluated_ckpts = [ckpt for ckpt in already_evaluated_ckpts]
         while True:
             # Load current checkpoints available
@@ -617,11 +633,10 @@ class EvaluatorRetinanet:
         avg_loss_file_dir = predictions_base_dir + '/avg_losses/'\
                 + self.dataset_config.data_split  
         avg_loss_file_path = avg_loss_file_dir +'/avg_losses.csv'
- 
-        avg_loss_file_path = predictions_base_dir + '/avg_losses.csv'
 
         if os.path.exists(avg_loss_file_path):
             avg_losses = np.loadtxt(avg_loss_file_path, delimiter=',',  skiprows=1)
+            print(avg_losses)
             if avg_losses.ndim == 1:
                 # one entry
                 already_evaluated_ckpts = np.asarray(
@@ -702,11 +717,19 @@ class EvaluatorRetinanet:
         final_pred_sigmoid = predictions[
                 RetinanetModel.PRED_TOP_OBJECTNESS_SIGMOID]
         anchors = final_pred_anchors[:, :5]
-        h = final_pred_anchors[:, 5:7]
-        angle_cls = final_pred_anchors[:, 7]
-        angle_val = anchors[:, -1]
-        angle = orientation_encoder.angle_clsval_to_orientation(angle_cls, angle_val)
-        anchors[:, -1] = angle
+        col_h_lo = 5
+        col_h_hi = col_h_lo
+        if self.model.add_h:
+            col_h_hi = col_h_lo + 2
+            h = final_pred_anchors[:, col_h_lo:col_h_hi]
+        else:
+            h = None
+        if self.model.add_angle:
+            col_angle_cls = col_h_hi
+            angle_cls = final_pred_anchors[:, col_angle_cls]
+            angle_val = anchors[:, -1]
+            angle = orientation_encoder.angle_clsval_to_orientation(angle_cls, angle_val)
+            anchors[:, -1] = angle
         bev_shape = [self.model_config.input_config.bev_dims_h,\
                      self.model_config.input_config.bev_dims_w]
         area_extents = self.dataset_config.kitti_utils_config.area_extents

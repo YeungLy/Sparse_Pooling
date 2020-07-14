@@ -83,6 +83,7 @@ def add_scalar_summary(summary_name, scalar_value,
                           simple_value=scalar_value)
 
     summary_writer.add_summary(avg_summary, global_step)
+    print('add scalar summary: name:', summary_name, ', val: ', scalar_value)
 
 
 def summaries_to_keep(summaries,
@@ -106,6 +107,9 @@ def summaries_to_keep(summaries,
                 summaries.remove(summary)
 
     # Merge all summaries together.
+    if len(summaries) < 1:
+        return None 
+
     summary_op = tf.summary.merge(list(summaries), name='summary_op')
 
     return summary_op
