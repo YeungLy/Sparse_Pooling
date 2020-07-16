@@ -157,6 +157,7 @@ class RetinanetModel(model.DetectionModel):
         self.add_h_flags[-1] = self.add_h 
         self.add_angle_flags[-1] = self.add_angle 
         self.do_nms_at_gpu = True
+        self.reg_target_scales = []
 
         # Feature Extractor Nets
         self._bev_feature_extractor = \
@@ -249,10 +250,6 @@ class RetinanetModel(model.DetectionModel):
 
             # Summary Image
             tf.summary.image("rgb_image", self._img_preprocessed,
-                             max_outputs=2)
-            img_bilinear_resized = tf.image.resize_bilinear(
-                    self._img_input_batches, self._img_pixel_size)
-            tf.summary.image("rgb_image_bilinear", img_bilinear_resized,
                              max_outputs=2)
 
         #WZN: define sparse pooling inputs
@@ -349,16 +346,17 @@ class RetinanetModel(model.DetectionModel):
                     feature_depths[0],
                     [3, 3],
                     scope='pyramid_fusion_pooled_bev')
-            img_feature_maps = slim.conv2d(
-                    img_feature_maps,
-                    feature_depths[1],
-                    [3, 3],
-                    scope='pyramid_fusion_pooled_img')
-            print('WZN: Sucessfully created conv after fusion')
 
             #update fused feature maps
             self.bev_feature_pyramids[use_level] = bev_feature_maps
-            self.img_feature_pyramids[use_level] = img_feature_maps
+            #img_feature_maps = slim.conv2d(
+            #        img_feature_maps,
+            #        feature_depths[1],
+            #        [3, 3],
+            #        scope='pyramid_fusion_pooled_img')
+            #print('WZN: Sucessfully created conv after fusion')
+
+            #self.img_feature_pyramids[use_level] = img_feature_maps
 
             self.bev_end_points = self.bev_feature_pyramids
             self.img_end_points = self.img_feature_pyramids
@@ -384,15 +382,19 @@ class RetinanetModel(model.DetectionModel):
         final_conv_bias_initializer = initializers['final_conv_bias_initializer']
         with tf.variable_scope('cls_conv2d'+scope_postfix):
             fcn_cls_conv2d = inputs
+            activation_fn=tf.nn.relu
+            #activation_fn=tf.nn.leaky_relu
             for i in range(4):
                 fcn_cls_conv2d = slim.conv2d(inputs=fcn_cls_conv2d,
                         num_outputs=self._fpn_channel,
                         kernel_size=[3, 3],
                         stride=1,
-                        activation_fn=tf.nn.relu,
+                        activation_fn=activation_fn,
                         weights_initializer=subnet_weights_initializer,
                         biases_initializer=subnet_bias_initializer,
                         scope='sub{}'.format(i),)
+                tf.summary.histogram(fcn_cls_conv2d.name.replace(':', '_'),
+                    fcn_cls_conv2d)
         with tf.variable_scope('output'+scope_postfix):
             fcn_cls_scores = slim.conv2d(fcn_cls_conv2d, 
                     num_outputs=self.dataset.num_classes * num_anchors_per_location,
@@ -401,28 +403,45 @@ class RetinanetModel(model.DetectionModel):
                     weights_initializer=subnet_weights_initializer,
                     biases_initializer=final_conv_bias_initializer,
                     activation_fn=None,)
+            tf.summary.histogram(fcn_cls_scores.name.replace(':', '_'),
+                fcn_cls_scores)
             #output shape is (feat_h*feat_w*num_anchors_per_location, num_classes]
             fcn_cls_scores = tf.reshape(fcn_cls_scores, [-1, self.dataset.num_classes],
                     name='reshape')
             fcn_cls_probs = tf.sigmoid(fcn_cls_scores, name='sigmoid')
         return fcn_cls_scores, fcn_cls_probs
 
-    def _fcn_reg_net(self, inputs, scope_postfix, initializers, num_anchors_per_location, add_h, add_angle):
+    def _fcn_reg_net(self, inputs, scope_postfix, initializers, num_anchors_per_location, add_h, add_angle, share_version=1):
+        if share_version == 1:
+            return self._fcn_reg_net_sharedv1(inputs, scope_postfix, initializers, num_anchors_per_location,\
+                    add_h, add_angle)
+        elif share_version == 2:
+            return self._fcn_reg_net_sharedv2(inputs, scope_postfix, initializers, num_anchors_per_location,\
+                    add_h, add_angle)
+        else:
+            raise ValueError('Wrong shared version at fcn_reg_net: {}, should be [1, 2]'.format(share_version))
+
+    def _fcn_reg_net_sharedv2(self, inputs, scope_postfix, initializers, num_anchors_per_location, add_h, add_angle):
         subnet_weights_initializer = initializers['subnet_weights_initializer']
         subnet_bias_initializer = initializers['subnet_bias_initializer']
         final_conv_bias_initializer = initializers['final_conv_bias_initializer']
         fcn_reg_h, fcn_reg_angle_cls = None, None
         with tf.variable_scope('reg_conv2d'+scope_postfix):
             fcn_reg_conv2d = inputs
+            #activation_fn=tf.nn.leaky_relu
+            activation_fn=tf.nn.relu
             for i in range(4):
                 fcn_reg_conv2d = slim.conv2d(inputs=fcn_reg_conv2d,
                         num_outputs=self._fpn_channel,
                         kernel_size=[3, 3],
                         stride=1,
-                        activation_fn=tf.nn.relu,
+                        activation_fn=activation_fn,
                         weights_initializer=subnet_weights_initializer,
                         biases_initializer=subnet_bias_initializer,
                         scope='sub{}'.format(i),)
+                tf.summary.histogram(fcn_reg_conv2d.name.replace(':', '_'),
+                    fcn_reg_conv2d)
+
         with tf.variable_scope('output'+scope_postfix):
             fcn_reg_boxes = slim.conv2d(inputs=fcn_reg_conv2d,
                     num_outputs=5 * num_anchors_per_location,
@@ -432,6 +451,101 @@ class RetinanetModel(model.DetectionModel):
                     biases_initializer=subnet_bias_initializer,
                     scope='boxes',
                     activation_fn=None,)
+            tf.summary.histogram(fcn_reg_boxes.name.replace(':', '_'),
+                fcn_reg_boxes)
+            fcn_reg_boxes = tf.reshape(fcn_reg_boxes, [-1, 5], name='boxes/reshape')
+        if add_angle:
+            with tf.variable_scope('ang_conv2d'+scope_postfix):
+                fcn_ang_conv2d = inputs
+                #activation_fn=tf.nn.leaky_relu
+                activation_fn=tf.nn.relu
+                for i in range(4):
+                    fcn_ang_conv2d = slim.conv2d(inputs=fcn_ang_conv2d,
+                        num_outputs=self._fpn_channel,
+                        kernel_size=[3, 3],
+                        stride=1,
+                        activation_fn=activation_fn,
+                        weights_initializer=subnet_weights_initializer,
+                        biases_initializer=subnet_bias_initializer,
+                        scope='sub{}'.format(i),)
+                    tf.summary.histogram(fcn_ang_conv2d.name.replace(':', '_'),
+                        fcn_ang_conv2d)
+                    #biases_initializer=subnet_bias_initializer,
+            with tf.variable_scope('output_angle_cls'+scope_postfix):
+                fcn_reg_angle_cls = slim.conv2d(inputs=fcn_ang_conv2d,
+                    num_outputs=2 * num_anchors_per_location,
+                    kernel_size=[3, 3],
+                    stride=1, 
+                    weights_initializer=subnet_weights_initializer,
+                    biases_initializer=final_conv_bias_initializer,
+                    activation_fn=None,)
+                tf.summary.histogram(fcn_reg_angle_cls.name.replace(':', '_'),
+                        fcn_reg_angle_cls)
+                fcn_reg_angle_cls = tf.reshape(fcn_reg_angle_cls, [-1, 2], name='angle_cls/reshape')
+
+        if add_h:
+            with tf.variable_scope('h_conv2d'+scope_postfix):
+                fcn_h_conv2d = inputs
+                #activation_fn=tf.nn.leaky_relu
+                activation_fn=tf.nn.relu
+                for i in range(4):
+                    fcn_h_conv2d = slim.conv2d(inputs=fcn_h_conv2d,
+                        num_outputs=self._fpn_channel,
+                        kernel_size=[3, 3],
+                        stride=1,
+                        activation_fn=activation_fn,
+                        weights_initializer=subnet_weights_initializer,
+                        biases_initializer=subnet_bias_initializer,
+                        scope='sub{}'.format(i),)
+                    tf.summary.histogram(fcn_h_conv2d.name.replace(':', '_'),
+                        fcn_h_conv2d)
+            with tf.variable_scope('output_h'+scope_postfix):
+                fcn_reg_h = slim.conv2d(inputs=fcn_h_conv2d,
+                    num_outputs=2 * num_anchors_per_location,
+                    kernel_size=[3, 3],
+                    stride=1, 
+                    weights_initializer=subnet_weights_initializer,
+                    biases_initializer=subnet_bias_initializer,
+                    activation_fn=None,)
+                tf.summary.histogram(fcn_reg_h.name.replace(':', '_'),
+                        fcn_reg_h)
+                fcn_reg_h = tf.reshape(fcn_reg_h, [-1, 2], name='h3d/reshape')
+            #num of angle classes is 2, one for head and another for tail
+        return fcn_reg_boxes, fcn_reg_h, fcn_reg_angle_cls
+
+
+
+    def _fcn_reg_net_sharedv1(self, inputs, scope_postfix, initializers, num_anchors_per_location, add_h, add_angle):
+        subnet_weights_initializer = initializers['subnet_weights_initializer']
+        subnet_bias_initializer = initializers['subnet_bias_initializer']
+        final_conv_bias_initializer = initializers['final_conv_bias_initializer']
+        fcn_reg_h, fcn_reg_angle_cls = None, None
+        with tf.variable_scope('reg_conv2d'+scope_postfix):
+            fcn_reg_conv2d = inputs
+            #activation_fn=tf.nn.leaky_relu
+            activation_fn=tf.nn.relu
+            for i in range(4):
+                fcn_reg_conv2d = slim.conv2d(inputs=fcn_reg_conv2d,
+                        num_outputs=self._fpn_channel,
+                        kernel_size=[3, 3],
+                        stride=1,
+                        activation_fn=activation_fn,
+                        weights_initializer=subnet_weights_initializer,
+                        biases_initializer=subnet_bias_initializer,
+                        scope='sub{}'.format(i),)
+                tf.summary.histogram(fcn_reg_conv2d.name.replace(':', '_'),
+                    fcn_reg_conv2d)
+        with tf.variable_scope('output'+scope_postfix):
+            fcn_reg_boxes = slim.conv2d(inputs=fcn_reg_conv2d,
+                    num_outputs=5 * num_anchors_per_location,
+                    kernel_size=[3, 3],
+                    stride=1,
+                    weights_initializer=subnet_weights_initializer,
+                    biases_initializer=subnet_bias_initializer,
+                    scope='boxes',
+                    activation_fn=None,)
+            tf.summary.histogram(fcn_reg_boxes.name.replace(':', '_'),
+                fcn_reg_boxes)
             fcn_reg_boxes = tf.reshape(fcn_reg_boxes, [-1, 5], name='boxes/reshape')
             if add_h:
                 fcn_reg_h = slim.conv2d(inputs=fcn_reg_conv2d,
@@ -442,6 +556,8 @@ class RetinanetModel(model.DetectionModel):
                     biases_initializer=subnet_bias_initializer,
                     scope='h3d',
                     activation_fn=None,)
+                tf.summary.histogram(fcn_reg_h.name.replace(':', '_'),
+                        fcn_reg_h)
                 fcn_reg_h = tf.reshape(fcn_reg_h, [-1, 2], name='h3d/reshape')
             #num of angle classes is 2, one for head and another for tail
             if add_angle:
@@ -454,6 +570,8 @@ class RetinanetModel(model.DetectionModel):
                     biases_initializer=final_conv_bias_initializer,
                     scope='angle_cls',
                     activation_fn=None,)
+                tf.summary.histogram(fcn_reg_angle_cls.name.replace(':', '_'),
+                        fcn_reg_angle_cls)
                 fcn_reg_angle_cls = tf.reshape(fcn_reg_angle_cls, [-1, 2], name='angle_cls/reshape')
 
         return fcn_reg_boxes, fcn_reg_h, fcn_reg_angle_cls
@@ -556,7 +674,8 @@ class RetinanetModel(model.DetectionModel):
             with tf.variable_scope('refine_cls_net', reuse=reuse_flag):
                 fcn_cls_conv2d = refine_feature_pyramids[level]
                 scope_postfix = f'_{level}' if not share_net else ''
-                fcn_cls_scores, fcn_cls_probs = self._fcn_cls_net(\
+                fcn_cls_scores, fcn_cls_probs = \
+                    self._fcn_cls_net(\
                         inputs=fcn_cls_conv2d, scope_postfix=scope_postfix,
                         initializers=initializers,
                         num_anchors_per_location=1)
@@ -565,7 +684,8 @@ class RetinanetModel(model.DetectionModel):
             with tf.variable_scope('refine_reg_net', reuse=reuse_flag):
                 fcn_reg_conv2d = refine_feature_pyramids[level]
                 scope_postfix = f'_{level}' if not share_net else ''
-                fcn_reg_boxes, fcn_reg_h, fcn_reg_angle_cls = self._fcn_reg_net(\
+                fcn_reg_boxes, fcn_reg_h, fcn_reg_angle_cls =\
+                    self._fcn_reg_net(\
                         inputs=fcn_reg_conv2d, scope_postfix=scope_postfix,
                         initializers=initializers,
                         num_anchors_per_location=1,
@@ -588,6 +708,7 @@ class RetinanetModel(model.DetectionModel):
                     tf.concat(final_indices_list_pred, axis=0)
             refine_results['final_indices_gt'] = \
                     tf.concat(final_indices_list_gt, axis=0)
+
         return refine_results
 
 
@@ -655,7 +776,8 @@ class RetinanetModel(model.DetectionModel):
                     with tf.variable_scope('fcn_reg_net', reuse=reuse_flag):
                         fcn_reg_conv2d = tensor_in_dict[level]
                         scope_postfix = f'_{level}' if not share_net else ''
-                        fcn_reg_boxes, fcn_reg_h, fcn_reg_angle_cls = self._fcn_reg_net(\
+                        fcn_reg_boxes, fcn_reg_h, fcn_reg_angle_cls = \
+                            self._fcn_reg_net(\
                                 inputs=fcn_reg_conv2d, scope_postfix=scope_postfix,
                                 initializers=initializers,
                                 num_anchors_per_location=self._num_anchors_per_location,
@@ -670,6 +792,7 @@ class RetinanetModel(model.DetectionModel):
                 self.NET_REG_H_LIST: fcn_boxes_h_list,
                 self.NET_REG_ANGLE_CLS_LIST: fcn_boxes_angle_cls_list,
                 self.NET_ANCHOR_INDICES: self.placeholders[self.PL_ANCHOR_INDICES]}
+
 
         if self.refine_stage_num > 0:
             #num_anchor_per_location = 1 instead of self._num_anchor_per_location
@@ -691,7 +814,8 @@ class RetinanetModel(model.DetectionModel):
             for i in range(self.refine_stage_num):
                 with tf.variable_scope('refine_stage_{}'.format(i), [bev_feature_pyramids]):
                     print('building refine stage{}'.format(i))
-                    refine_outputs = self._refine_stage(\
+                    refine_outputs = \
+                        self._refine_stage(\
                             feature_pyramids=bev_feature_pyramids,
                             anchors_list=input_anchors_list,
                             reg_boxes_list=input_reg_boxes_list,
@@ -716,6 +840,19 @@ class RetinanetModel(model.DetectionModel):
                                     add_angle=self.add_angle_flags[i+1])
                         refine_stage_targets.append(targets)
 
+        #Add histogram of all trainable vars.
+        with tf.variable_scope('histogram'):
+            for var in slim.get_model_variables():
+                if var.name.find('weights') == -1 and \
+                        var.name.find('biases') == -1:
+                    continue
+                if var.name.find('resnet') != -1 and\
+                    var.name.find('fuse_P') == -1:
+                        continue
+                tf.summary.histogram(var.name.replace(':', '_'),
+                                 var)
+        
+
         anchors = self.placeholders[self.PL_ANCHORS]
         #Non empty indices
         non_empty_anchor_indices = self.placeholders[self.PL_ANCHOR_INDICES]
@@ -737,6 +874,7 @@ class RetinanetModel(model.DetectionModel):
             neg_anchor_mask = tf.less(all_ious_gt, max_neg_iou)
 
         with tf.variable_scope('fcn_build_targets'):
+
             #pos and neg., 0 is background at all_classes_gt
             objectness_gt_with_bg = tf.one_hot(
                     tf.cast(all_classes_gt, tf.int32),
@@ -879,7 +1017,7 @@ class RetinanetModel(model.DetectionModel):
                         self.NEG_ANCHORS_MASK: refine_neg_mask,
                     })
                     #visualize positive anchor
-                    vis_pos_anchor = True
+                    vis_pos_anchor = False #True
                     if vis_pos_anchor:
                         with tf.variable_scope(f'vis_refine{i}_pos_anchor'):
                             self.visualize_positive_anchor(\
@@ -1276,35 +1414,45 @@ class RetinanetModel(model.DetectionModel):
             with tf.variable_scope('reg'):
                 reg_loss = losses.WeightedSmoothL1Loss() 
                 reg_loss_weight = self._config.loss_config.reg_loss_weight
-                offsets = tf.boolean_mask(offsets, pos_anchor_mask)
-                offsets_gt = tf.boolean_mask(offsets_gt, pos_anchor_mask)
-                anchorwise_localization_loss = reg_loss(offsets,
-                                                        offsets_gt,
+                offsets_masked = tf.boolean_mask(offsets, pos_anchor_mask)
+                offsets_gt_masked = tf.boolean_mask(offsets_gt, pos_anchor_mask)
+                anchorwise_localization_loss = reg_loss(offsets_masked,
+                                                        offsets_gt_masked,
                                                         weight=reg_loss_weight)
                 localization_loss = tf.reduce_sum(anchorwise_localization_loss)
+                #localization_loss = tf.Print(localization_loss, \
+                #        [localization_loss, num_positives],
+                #        f'{localization_loss.name} reg loss, num pos')
                 localization_loss = tf.maximum(localization_loss, 0.0)
                 if add_angle:
                     with tf.variable_scope('angle_cls'):
                         angle_cls_loss_fn = losses.WeightedSoftmaxLoss()
                         ang_loss_weight = self._config.loss_config.ang_loss_weight
  
-                        offsets_angle_cls = tf.boolean_mask(offsets_angle_cls, pos_anchor_mask)
-                        offsets_angle_cls_gt = tf.boolean_mask(offsets_angle_cls_gt, pos_anchor_mask)
-                        anchorwise_angle_cls_loss = angle_cls_loss_fn(offsets_angle_cls,
-                                                                       offsets_angle_cls_gt,
+                        offsets_angle_cls_masked = tf.boolean_mask(offsets_angle_cls, pos_anchor_mask)
+                        offsets_angle_cls_gt_masked = tf.boolean_mask(offsets_angle_cls_gt, pos_anchor_mask)
+                        anchorwise_angle_cls_loss = angle_cls_loss_fn(offsets_angle_cls_masked,
+                                                                       offsets_angle_cls_gt_masked,
                                                                        weight=ang_loss_weight)
                         angle_cls_loss = tf.reduce_sum(anchorwise_angle_cls_loss)
+                        #angle_cls_loss = tf.Print(angle_cls_loss, \
+                        #    [angle_cls_loss, num_positives],
+                        #    f'{angle_cls_loss.name} ang loss, num pos')
                 if add_h:
                     with tf.variable_scope('h_reg'):
                         h_reg_loss_fn = losses.WeightedSmoothL1Loss()
                         h_loss_weight = self._config.loss_config.h_loss_weight
- 
-                        offsets_h = tf.boolean_mask(offsets_h, pos_anchor_mask)
-                        offsets_h_gt = tf.boolean_mask(offsets_h_gt, pos_anchor_mask)
-                        anchorwise_h_reg_loss = h_reg_loss_fn(offsets_h,
-                                                               offsets_h_gt,
+                        offset_h_gt_weight = 1.0
+                        offsets_h_masked = tf.boolean_mask(offsets_h, pos_anchor_mask)
+                        offsets_h_gt_masked = tf.boolean_mask(offsets_h_gt, pos_anchor_mask)
+                        #offsets_h_gt = offsets_h_gt * offset_h_gt_weight
+                        anchorwise_h_reg_loss = h_reg_loss_fn(offsets_h_masked,
+                                                               offsets_h_gt_masked,
                                                                weight=h_loss_weight)
                         h_reg_loss = tf.reduce_sum(anchorwise_h_reg_loss)
+                        #h_reg_loss = tf.Print(h_reg_loss, \
+                        #    [h_reg_loss, num_positives],
+                        #    f'{h_reg_loss.name} h loss, num pos')
                 with tf.variable_scope('norm'):
                     # normalize by the number of positive objects
                     # Assert the condition `num_positives > 0`
@@ -1418,6 +1566,7 @@ class RetinanetModel(model.DetectionModel):
             if add_angle:
                 gt_anchor_angle = tf.gather(gt_anchors[:, -1], max_iou_indices)
                 offsets_angle_cls_gt = orientation_encoder.tf_orientation_to_angle_cls(gt_anchor_angle)
+
         #these info is pred at num anchors = feat_h*feat_w
         #should be filtered later by non empty indices
         targets = {
@@ -1477,6 +1626,8 @@ class RetinanetModel(model.DetectionModel):
             anchors_info_list = [top_anchors]
             if pred_results[self.PRED_OFFSETS_H] is not None:
                 pred_offsets_h = pred_results[self.PRED_OFFSETS_H]
+                offset_h_gt_weight = 1.0 #4.5
+                pred_offsets_h /= offset_h_gt_weight
                 top_offsets_h = tf.gather(pred_offsets_h, top_indices)
                 n_anchor = tf.shape(top_indices)[0]
                 anchor_h = anchor_bev_encoder.get_default_anchor_h(n_anchor, fmt='tf')
