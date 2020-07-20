@@ -141,10 +141,10 @@ class RetinanetModel(model.DetectionModel):
 
         retinanet_config = self._config.retinanet_config
         # Retinanet config
-        print('WZN: Using Non-homogeneous Sparse Pooling Layer. \n')
         self._use_sparse_pooling = retinanet_config.use_sparse_pooling and dataset.output_indices
         if self._use_sparse_pooling:
             self._use_pyramid_level_at_SHPL = retinanet_config.use_pyramid_level_at_SHPL
+            print('WZN: Using Non-homogeneous Sparse Pooling Layer. \n')
 
         self._nms_size = retinanet_config.nms_size
         self._nms_iou_thresh = retinanet_config.nms_iou_thresh
@@ -188,13 +188,13 @@ class RetinanetModel(model.DetectionModel):
         self._anchor_params = self.dataset.kitti_utils.mini_batch_utils.retinanet_anchor_params
         self._num_anchors_per_location = len(self._anchor_params['anchor_scales']) * \
                                         len(self._anchor_params['anchor_ratios'])
+
         self._anchor_generator = \
             grid_anchor_bev_generator.GridAnchorBevGenerator()
         self._num_locations_per_level = [shape[0]*shape[1]\
                 for shape in self._anchor_params['image_shapes']]
         self._num_anchors_per_level = [loc*self._num_anchors_per_location\
                 for loc in self._num_locations_per_level]
- 
 
         self._train_on_all_samples = self._config.train_on_all_samples
         self._eval_all_samples = self._config.eval_all_samples
@@ -393,7 +393,7 @@ class RetinanetModel(model.DetectionModel):
                         weights_initializer=subnet_weights_initializer,
                         biases_initializer=subnet_bias_initializer,
                         scope='sub{}'.format(i),)
-                tf.summary.histogram(fcn_cls_conv2d.name.replace(':', '_'),
+                tf.summary.histogram('histogram_'+fcn_cls_conv2d.name.replace(':', '_'),
                     fcn_cls_conv2d)
         with tf.variable_scope('output'+scope_postfix):
             fcn_cls_scores = slim.conv2d(fcn_cls_conv2d, 
@@ -403,7 +403,7 @@ class RetinanetModel(model.DetectionModel):
                     weights_initializer=subnet_weights_initializer,
                     biases_initializer=final_conv_bias_initializer,
                     activation_fn=None,)
-            tf.summary.histogram(fcn_cls_scores.name.replace(':', '_'),
+            tf.summary.histogram('histogram_'+fcn_cls_scores.name.replace(':', '_'),
                 fcn_cls_scores)
             #output shape is (feat_h*feat_w*num_anchors_per_location, num_classes]
             fcn_cls_scores = tf.reshape(fcn_cls_scores, [-1, self.dataset.num_classes],
@@ -439,7 +439,7 @@ class RetinanetModel(model.DetectionModel):
                         weights_initializer=subnet_weights_initializer,
                         biases_initializer=subnet_bias_initializer,
                         scope='sub{}'.format(i),)
-                tf.summary.histogram(fcn_reg_conv2d.name.replace(':', '_'),
+                tf.summary.histogram('histogram_'+fcn_reg_conv2d.name.replace(':', '_'),
                     fcn_reg_conv2d)
 
         with tf.variable_scope('output'+scope_postfix):
@@ -451,7 +451,7 @@ class RetinanetModel(model.DetectionModel):
                     biases_initializer=subnet_bias_initializer,
                     scope='boxes',
                     activation_fn=None,)
-            tf.summary.histogram(fcn_reg_boxes.name.replace(':', '_'),
+            tf.summary.histogram('histogram_'+fcn_reg_boxes.name.replace(':', '_'),
                 fcn_reg_boxes)
             fcn_reg_boxes = tf.reshape(fcn_reg_boxes, [-1, 5], name='boxes/reshape')
         if add_angle:
@@ -468,7 +468,7 @@ class RetinanetModel(model.DetectionModel):
                         weights_initializer=subnet_weights_initializer,
                         biases_initializer=subnet_bias_initializer,
                         scope='sub{}'.format(i),)
-                    tf.summary.histogram(fcn_ang_conv2d.name.replace(':', '_'),
+                    tf.summary.histogram('histogram_'+fcn_ang_conv2d.name.replace(':', '_'),
                         fcn_ang_conv2d)
                     #biases_initializer=subnet_bias_initializer,
             with tf.variable_scope('output_angle_cls'+scope_postfix):
@@ -479,7 +479,7 @@ class RetinanetModel(model.DetectionModel):
                     weights_initializer=subnet_weights_initializer,
                     biases_initializer=final_conv_bias_initializer,
                     activation_fn=None,)
-                tf.summary.histogram(fcn_reg_angle_cls.name.replace(':', '_'),
+                tf.summary.histogram('histogram_'+fcn_reg_angle_cls.name.replace(':', '_'),
                         fcn_reg_angle_cls)
                 fcn_reg_angle_cls = tf.reshape(fcn_reg_angle_cls, [-1, 2], name='angle_cls/reshape')
 
@@ -497,7 +497,7 @@ class RetinanetModel(model.DetectionModel):
                         weights_initializer=subnet_weights_initializer,
                         biases_initializer=subnet_bias_initializer,
                         scope='sub{}'.format(i),)
-                    tf.summary.histogram(fcn_h_conv2d.name.replace(':', '_'),
+                    tf.summary.histogram('histogram_'+fcn_h_conv2d.name.replace(':', '_'),
                         fcn_h_conv2d)
             with tf.variable_scope('output_h'+scope_postfix):
                 fcn_reg_h = slim.conv2d(inputs=fcn_h_conv2d,
@@ -507,7 +507,7 @@ class RetinanetModel(model.DetectionModel):
                     weights_initializer=subnet_weights_initializer,
                     biases_initializer=subnet_bias_initializer,
                     activation_fn=None,)
-                tf.summary.histogram(fcn_reg_h.name.replace(':', '_'),
+                tf.summary.histogram('histogram_'+fcn_reg_h.name.replace(':', '_'),
                         fcn_reg_h)
                 fcn_reg_h = tf.reshape(fcn_reg_h, [-1, 2], name='h3d/reshape')
             #num of angle classes is 2, one for head and another for tail
@@ -533,7 +533,7 @@ class RetinanetModel(model.DetectionModel):
                         weights_initializer=subnet_weights_initializer,
                         biases_initializer=subnet_bias_initializer,
                         scope='sub{}'.format(i),)
-                tf.summary.histogram(fcn_reg_conv2d.name.replace(':', '_'),
+                tf.summary.histogram('histogram_'+fcn_reg_conv2d.name.replace(':', '_'),
                     fcn_reg_conv2d)
         with tf.variable_scope('output'+scope_postfix):
             fcn_reg_boxes = slim.conv2d(inputs=fcn_reg_conv2d,
@@ -544,7 +544,7 @@ class RetinanetModel(model.DetectionModel):
                     biases_initializer=subnet_bias_initializer,
                     scope='boxes',
                     activation_fn=None,)
-            tf.summary.histogram(fcn_reg_boxes.name.replace(':', '_'),
+            tf.summary.histogram('histogram_'+fcn_reg_boxes.name.replace(':', '_'),
                 fcn_reg_boxes)
             fcn_reg_boxes = tf.reshape(fcn_reg_boxes, [-1, 5], name='boxes/reshape')
             if add_h:
@@ -556,7 +556,7 @@ class RetinanetModel(model.DetectionModel):
                     biases_initializer=subnet_bias_initializer,
                     scope='h3d',
                     activation_fn=None,)
-                tf.summary.histogram(fcn_reg_h.name.replace(':', '_'),
+                tf.summary.histogram('histogram_'+fcn_reg_h.name.replace(':', '_'),
                         fcn_reg_h)
                 fcn_reg_h = tf.reshape(fcn_reg_h, [-1, 2], name='h3d/reshape')
             #num of angle classes is 2, one for head and another for tail
@@ -570,7 +570,7 @@ class RetinanetModel(model.DetectionModel):
                     biases_initializer=final_conv_bias_initializer,
                     scope='angle_cls',
                     activation_fn=None,)
-                tf.summary.histogram(fcn_reg_angle_cls.name.replace(':', '_'),
+                tf.summary.histogram('histogram_'+fcn_reg_angle_cls.name.replace(':', '_'),
                         fcn_reg_angle_cls)
                 fcn_reg_angle_cls = tf.reshape(fcn_reg_angle_cls, [-1, 2], name='angle_cls/reshape')
 
@@ -579,7 +579,6 @@ class RetinanetModel(model.DetectionModel):
     def _refine_stage(self, feature_pyramids, anchors_list, reg_boxes_list, cls_probs_list, \
             refine_stage_idx, initializers):
             #argmax_anchor_indices=None):
-        final_indices_list_gt = []
         final_indices_list_pred = []
         refine_feature_pyramids = {}
         refine_scores_list, refine_probs_list = [], []
@@ -596,6 +595,11 @@ class RetinanetModel(model.DetectionModel):
             all_level_empty_anchor_filter = [\
                     empty_anchor_filter[all_level_idx[i]:all_level_idx[i+1]]\
                     for i in range(len(self._num_anchors_per_level))]
+            num_loc_per_level = [int(n/self._num_anchors_per_location) for n in self._num_anchors_per_level]
+            #for shift indices_for_pred from 0 to each level's start
+            #e.g. indices at each level: level0: (0~100), level1: (0~30), level2: (0~10) 
+            #=> final_indices at all level: concat( (0~100), (100~130), (130~140) )
+            offset_location_size = np.cumsum(num_loc_per_level)
         for l, level in enumerate(self._feature_pyramid_levels): 
             with tf.variable_scope(level):
                 reg_offsets = tf.reshape(reg_boxes_list[l], (-1, 5))
@@ -634,11 +638,6 @@ class RetinanetModel(model.DetectionModel):
                     empty_anchor_mask = tf.reshape(empty_anchor_mask, (-1,))
                     #shape (feat_h*feat_w* num_anchors_per_loc)
                     final_mask = tf.logical_and(empty_anchor_mask, argmax_mask)
-                    #mask for gt anchors info, which shape is (feat_h*feat_w*num_anchors_per_loc, )
-                    final_mask_for_gt = tf.gather_nd(final_mask,\
-                            non_empty_anchor_indices)
-                    final_indices_for_gt = tf.where(final_mask_for_gt)  
-                    final_indices_for_gt = tf.reshape(final_indices_for_gt, (-1, ))
                     #mask for network output, which shape is (feat_h*feat_w, )
                     final_mask_int = tf.cast(tf.reshape(final_mask, (-1, self._num_anchors_per_location))\
                             , tf.int32)
@@ -646,14 +645,23 @@ class RetinanetModel(model.DetectionModel):
                     final_mask_for_pred = tf.reduce_sum(final_mask_int, axis=-1)
                     final_mask_for_pred = tf.cast(final_mask_for_pred, tf.bool)
                     final_indices_for_pred = tf.where(final_mask_for_pred) #return of where shape is (-1, 1) 
+                    num_loc = int(self._num_anchors_per_level[l] / self._num_anchors_per_location)
                     final_indices_for_pred = tf.reshape(final_indices_for_pred, (-1, ))
+                    #DEBUG to check final indices for pred == range(feat_h*feat_w) 
+                     #when empty_anchor_filter=ALL TRUE
+                    #all_anchor_indices = tf.cast(tf.range(num_loc), tf.int32)
+                    #diff = tf.subtract(tf.cast(final_indices_for_pred, tf.int32),\
+                    #        all_anchor_indices)
+                    #final_indices_for_pred = tf.Print(final_indices_for_pred,\
+                    #        [tf.reduce_sum(diff), final_indices_for_pred[-3:]], f'refine {num_loc} boxes, indices diff ')
                     if l > 0:
-                        #final_indices_for_gt += self._num_anchors_per_level[l]
-                        num_non_empty_anchors_per_level = tf.cast(tf.shape(non_empty_anchor_indices)[0], tf.int64)
-                        final_indices_for_gt = tf.add(final_indices_for_gt, num_non_empty_anchors_per_level)
                         final_indices_for_pred += \
-                                int(self._num_anchors_per_level[l] / self._num_anchors_per_location)
-                    final_indices_list_gt.append(final_indices_for_gt)
+                                offset_location_size[l-1]
+                                #WRONG before!!!!
+                                #int(self._num_anchors_per_level[l-1] / self._num_anchors_per_location)
+                        #DEBUG to check if the head and tail is expected indices.
+                        #final_indices_for_pred = tf.Print(final_indices_for_pred,\
+                        #        [final_indices_for_pred[0:3], final_indices_for_pred[-3:]], f'refine {num_loc} boxes, indices ')
                     final_indices_list_pred.append(final_indices_for_pred)
                 else:
                     pred_boxes = anchor_bev_encoder.offset_to_anchor(\
@@ -706,8 +714,6 @@ class RetinanetModel(model.DetectionModel):
         if refine_stage_idx == 0:
             refine_results[self.NET_ANCHOR_INDICES] = \
                     tf.concat(final_indices_list_pred, axis=0)
-            refine_results['final_indices_gt'] = \
-                    tf.concat(final_indices_list_gt, axis=0)
 
         return refine_results
 
@@ -809,7 +815,6 @@ class RetinanetModel(model.DetectionModel):
             refine_stage_targets = []
             #logical_and(non empty anchor, argmax_anchor at num_anchor_per_loc)
             final_indices_pred = None
-            final_indices_gt = None
             gt_anchors = self._prepare_gt_anchors()
             for i in range(self.refine_stage_num):
                 with tf.variable_scope('refine_stage_{}'.format(i), [bev_feature_pyramids]):
@@ -824,7 +829,6 @@ class RetinanetModel(model.DetectionModel):
                     refine_stage_outputs.append(refine_outputs)
                     if i == 0:
                         final_indices_pred = refine_outputs[self.NET_ANCHOR_INDICES]
-                        final_indices_gt = refine_outputs['final_indices_gt']
                     input_anchors_list = refine_outputs[self.PRED_BOXES_LIST]
                     input_reg_boxes_list = refine_outputs[self.NET_REG_BOXES_LIST]
                     input_cls_probs_list = refine_outputs[self.NET_CLS_PROBS_LIST]
@@ -895,6 +899,8 @@ class RetinanetModel(model.DetectionModel):
                     self.POS_ANCHORS_MASK: pos_anchor_mask,
                     self.NEG_ANCHORS_MASK: neg_anchor_mask,
             }
+            #gt_anchors = self._prepare_gt_anchors()
+            #fcn_targets = self._build_fcn_targets(gt_anchors, anchors, self.add_h_flags[0], self.add_angle_flags[0])
         # Specify the tensors to evaluate
         predictions = dict()
 
@@ -945,6 +951,7 @@ class RetinanetModel(model.DetectionModel):
                                 offsets=fcn_pred_results[self.PRED_OFFSETS],\
                                 offsets_gt=fcn_pred_results[self.PRED_OFFSETS_GT],\
                                 offsets_h=fcn_pred_results[self.PRED_OFFSETS_H])
+            do_nms[0] = True
             if do_nms[0] and self.do_nms_at_gpu:
                 nms_result = self.get_nms_result(fcn_pred_results, visualize=True)
                 if self.refine_stage_num == 0:
@@ -1007,6 +1014,10 @@ class RetinanetModel(model.DetectionModel):
                     if self.add_angle_flags[i+1]:
                         refine_offsets_angle_cls_gt = tf.gather_nd(refine_offsets_angle_cls_gt, anchor_indices_for_pred)
                     refine_pos_mask = tf.gather_nd(refine_pos_mask, anchor_indices_for_pred)
+                    #refine_pos_mask = tf.Print(refine_pos_mask, \
+                    #    [tf.reduce_sum(tf.cast(refine_pos_mask, tf.int32)),\
+                    #    tf.shape(refine_pos_mask)],\
+                    #    'after filter, refine pos num, shape of pos mask')
                     refine_neg_mask = tf.gather_nd(refine_neg_mask, anchor_indices_for_pred)
                     refine_pred_results.update({
                         self.PRED_OBJECTNESS_GT: refine_objectness_gt,
@@ -1017,7 +1028,7 @@ class RetinanetModel(model.DetectionModel):
                         self.NEG_ANCHORS_MASK: refine_neg_mask,
                     })
                     #visualize positive anchor
-                    vis_pos_anchor = False #True
+                    vis_pos_anchor = True
                     if vis_pos_anchor:
                         with tf.variable_scope(f'vis_refine{i}_pos_anchor'):
                             self.visualize_positive_anchor(\
@@ -1151,7 +1162,8 @@ class RetinanetModel(model.DetectionModel):
         # Network input data
         image_input = sample.get(constants.KEY_IMAGE_INPUT)
         bev_input = sample.get(constants.KEY_BEV_INPUT) #all height maps and density
-        bev_input = bev_input[:, :, [-1, 0, 2]] #height0, height2, density
+        bev_input = bev_input[:, :, [-1, 0, 1]] #height0, height2, density for dbg4 and all after.
+        #bev_input = bev_input[:, :, [-1, 0, 2]] #height0, height2, density
 
         # Image shape (h, w)
         image_shape = [image_input.shape[0], image_input.shape[1]]
@@ -1245,6 +1257,7 @@ class RetinanetModel(model.DetectionModel):
                 anchor_ratios=self._anchor_params['anchor_ratios'],
                 anchor_scales=self._anchor_params['anchor_scales'],
                 anchor_init_ry_type=self._anchor_params['anchor_init_ry_type'])
+        #print('anchor params for generator:\n', self._anchor_params)
         #concate all levels anchors
         all_anchor_boxes_bev = np.concatenate(all_level_anchor_boxes_bev)
         #print('anchors shape from anchor_generator: ', all_anchor_boxes_bev.shape)
@@ -1348,6 +1361,7 @@ class RetinanetModel(model.DetectionModel):
         else:
             raise ValueError('Got run mode {}, and non-empty anchor info'.
                              format(self._train_val_test))
+        #print(f'empty anchor filter , non empty num: {np.sum(empty_anchor_filter)}, total:{empty_anchor_filter.shape[0]}')
 
 
     def loss(self, prediction_dict):
@@ -1420,9 +1434,9 @@ class RetinanetModel(model.DetectionModel):
                                                         offsets_gt_masked,
                                                         weight=reg_loss_weight)
                 localization_loss = tf.reduce_sum(anchorwise_localization_loss)
-                #localization_loss = tf.Print(localization_loss, \
-                #        [localization_loss, num_positives],
-                #        f'{localization_loss.name} reg loss, num pos')
+                localization_loss = tf.Print(localization_loss, \
+                        [localization_loss, num_positives],
+                        f'{localization_loss.name} reg loss, num pos')
                 localization_loss = tf.maximum(localization_loss, 0.0)
                 if add_angle:
                     with tf.variable_scope('angle_cls'):
@@ -1520,6 +1534,7 @@ class RetinanetModel(model.DetectionModel):
                 [gt_anchors_x, gt_anchors_y, gt_anchors_w, gt_anchors_h, gt_anchors_norm[:, -1]], axis=1)
         return gt_anchors
 
+
     def _build_refine_targets(self, gt_anchors, anchors, refine_stage_idx, add_h, add_angle):
         with tf.variable_scope('iou'):
             device_id = 0
@@ -1579,6 +1594,91 @@ class RetinanetModel(model.DetectionModel):
         }
  
         return targets
+
+    def _build_fcn_targets(self, gt_anchors, anchors, add_h, add_angle):
+        with tf.variable_scope('iou'):
+            iou_type = '2d'
+            if iou_type == '2d':
+                #anchors_for_2d_iou_h = box_bev_encoder.box_bev_to_iou_h_format(anchors)
+                anchors_for_2d_iou_h = tf.py_func(box_bev_encoder.box_bev_to_iou_h_format,
+                        inp=[anchors], Tout=tf.float32)
+                gt_anchors_for_2d_iou_h = tf.py_func(box_bev_encoder.box_bev_to_iou_h_format,
+                        inp=[gt_anchors], Tout=tf.float32)
+                anchors_for_2d_iou_h = tf.reshape(anchors_for_2d_iou_h,
+                        (-1, 4))
+                gt_anchors_for_2d_iou_h = tf.reshape(gt_anchors_for_2d_iou_h,
+                        (-1, 4))
+                ious = tf.py_func(rotate_iou.calculate_iou,\
+                        inp=[gt_anchors_for_2d_iou_h, anchors_for_2d_iou_h],
+                        Tout=tf.float32)
+
+                #anchors_h_tf_order = \
+                #    anchor_projector.reorder_projected_boxes(anchors_for_2d_iou_h)
+                #gt_anchors_h_tf_order = \
+                #    anchor_projector.reorder_projected_boxes(gt_anchors_for_2d_iou_h)
+                #gt_anchor_box_list = box_list.BoxList(gt_anchors_h_tf_order)
+                #anchor_box_list = box_list.BoxList(anchors_h_tf_order)
+                #ious = box_list_ops.iou(gt_anchor_box_list, anchor_box_list)
+            elif iou_type == '2d_rotate':
+                device_id = 0
+                ious = tf.py_func(rotate_iou.calculate_rotate_iou,
+                        inp=[gt_anchors, anchors, device_id],
+                        Tout=tf.float32)
+            else:
+                raise NotImplementedError(f'Invalid iou_type: {iou_type}, should be [2d, 2d_rotate]')
+ 
+            max_ious = tf.reduce_max(ious, axis=0)
+            max_ious = tf.reshape(max_ious, (-1, ))
+            max_iou_indices = tf.argmax(ious, axis=0)
+            max_iou_indices = tf.reshape(max_iou_indices, (-1, ))
+
+        with tf.variable_scope(f'positive_anchor'):
+            min_pos_iou = \
+                self.dataset.kitti_utils.mini_batch_utils.retinanet_pos_iou_range[0]
+            max_neg_iou = \
+                self.dataset.kitti_utils.mini_batch_utils.retinanet_neg_iou_range[1]
+            pos_anchor_mask = tf.greater_equal(max_ious, min_pos_iou)
+            neg_anchor_mask = tf.less(max_ious, max_neg_iou)
+
+
+        with tf.variable_scope('offsets_gt'):
+            gt_classes = self.placeholders[self.PL_LABEL_CLASSES]
+            gt_boxes_3d = self.placeholders[self.PL_LABEL_BOXES_3D]
+            #gt_y3d, gt_h3d
+            offsets_h_gt, offsets_angle_cls_gt = None, None
+            class_gt = tf.gather(gt_classes, max_iou_indices)
+            objectness_gt_with_bg = tf.one_hot(
+                    tf.cast(class_gt, tf.int32),
+                    depth=self.dataset.num_classes+1,)
+            objectness_gt = objectness_gt_with_bg[:, 1:]
+            #make sure neg anchor's class vector is all zeros
+            objectness_gt = tf.where(neg_anchor_mask, tf.zeros_like(objectness_gt), objectness_gt)
+            anchors_gt = tf.gather(gt_anchors, max_iou_indices)
+            offsets_gt = anchor_bev_encoder.tf_anchor_to_offset(anchors, anchors_gt)
+            if add_h:
+                label_h = tf.stack([gt_boxes_3d[:, 1], gt_boxes_3d[:, 5]], axis=1)
+                gt_anchor_h = tf.gather(label_h, max_iou_indices)
+                #shape: (num_anchor,)
+                n_anchor = tf.shape(max_iou_indices)[0]
+                anchor_h = anchor_bev_encoder.get_default_anchor_h(n_anchor, fmt='tf')
+                offsets_h_gt = anchor_bev_encoder.anchor_to_offset_h(anchor_h, gt_anchor_h)
+            if add_angle:
+                gt_anchor_angle = tf.gather(gt_anchors[:, -1], max_iou_indices)
+                offsets_angle_cls_gt = orientation_encoder.tf_orientation_to_angle_cls(gt_anchor_angle)
+
+        #these info is pred at num anchors = feat_h*feat_w
+        #should be filtered later by non empty indices
+        targets = {
+            self.PRED_OBJECTNESS_GT: objectness_gt,
+            self.PRED_OFFSETS_GT: offsets_gt,
+            self.PRED_OFFSETS_H_GT: offsets_h_gt,
+            self.PRED_OFFSETS_ANGLE_CLS_GT: offsets_angle_cls_gt,
+            self.POS_ANCHORS_MASK: pos_anchor_mask,
+            self.NEG_ANCHORS_MASK: neg_anchor_mask,
+        }
+ 
+        return targets
+
 
     def get_nms_result(self, pred_results, visualize=False):
         with tf.variable_scope('nms'):
@@ -1715,9 +1815,6 @@ class RetinanetModel(model.DetectionModel):
         draw_pred = False #True
         if draw_pred:
             pos_anchor_offset = tf.boolean_mask(offsets, pos_mask)
-            #pos_anchor_offset = tf.Print(pos_anchor_offset, 
-            #            [tf.reduce_sum(pos_anchor_offset, axis=0)],
-            #            '**TFPRINT** pos bev offset')
             pos_anchor_pred = anchor_bev_encoder.offset_to_anchor(pos_anchors, pos_anchor_offset)
             pos_pred_in_bev = show_box_in_tensor.draw_boxes_with_scores(
                         img_batch=self._bev_input_batches,
@@ -1740,9 +1837,6 @@ class RetinanetModel(model.DetectionModel):
                                 pos_anchor_pred_h],\
                         Tout=tf.float32)
                 
-                #pos_pred_3d = tf.Print(pos_pred_3d, 
-                #        [tf.reduce_sum(pos_pred_3d, axis=0)],
-                #        '**TFPRINT** pos 3d')
                    
                 pos_pred_img = tf.py_func(box_bev_encoder.boxes_3d_project_to_image,
                         inp=[pos_pred_3d, self.placeholders[self.PL_CALIB_P2]],
