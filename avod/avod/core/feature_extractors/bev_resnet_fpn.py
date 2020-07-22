@@ -234,16 +234,11 @@ class BevResnetFpn(bev_feature_extractor.BevFeatureExtractor):
             add_f = 0.5*upsample_p + 0.5*reduce_dim_c
             return add_f
 
-    def build(self,
-              inputs,
-              is_training,
-              scope='bev_resnet'):
-        resnet_config = self.config
-        resnet_name = resnet_config.resnet_name
-        pyramid_levels = resnet_config.pyramid_levels
-        use_p5_at_p6 = resnet_config.use_p5_at_p6
-        use_relu_at_fusion = resnet_config.use_relu_at_fusion
-        weight_decay = resnet_config.weight_decay
+    def build_resnet(self, 
+            inputs, 
+            is_training, 
+            scope='bev_resnet'):
+        resnet_name = self.config.resnet_name
         if resnet_name.endswith('b'):
             get_resnet_fn = self.get_resnet_v1_b_base
         elif resnet_name.endswith('d'):
@@ -259,6 +254,15 @@ class BevResnetFpn(bev_feature_extractor.BevFeatureExtractor):
                                         is_training=is_training, freeze_norm=True,
                                         freeze=self.FREEZE_BLOCKS)
 
+        return feature_dict
+
+    def build_fpn(self, feature_dict, fuse_at_p5=False):
+
+        resnet_config = self.config
+        pyramid_levels = resnet_config.pyramid_levels
+        use_p5_at_p6 = resnet_config.use_p5_at_p6
+        use_relu_at_fusion = resnet_config.use_relu_at_fusion
+        weight_decay = resnet_config.weight_decay
         pyramid_dict = {}
         with tf.variable_scope('bev_build_feature_pyramid'):
         #FPN part
@@ -267,12 +271,22 @@ class BevResnetFpn(bev_feature_extractor.BevFeatureExtractor):
                     activation_fn=None, 
                     normalizer_fn=None):
 
-                P5 = slim.conv2d(feature_dict['C5'],
+                if not fuse_at_p5:
+                    P5 = slim.conv2d(feature_dict['C5'],
                                  num_outputs=self.FPN_CHANNEL,
                                  kernel_size=[1, 1],
                                  stride=1, scope='build_P5')
 
-                pyramid_dict['P5'] = P5
+                    pyramid_dict['P5'] = P5
+
+                else:
+                    if 'P5' not in feature_dict:
+                        raise ValueError('P5 should be fused and saved at feature dict.')
+                    else:
+                        pyramid_dict['P5'] = feature_dict['P5']
+
+                #we can fuse img and bev here. maybe high-level has more semantic.
+                #img to bev.
 
                 l_top, l_down = int(pyramid_levels[-1][-1]), int(pyramid_levels[0][-1])
                 for level in range(4, l_down - 1, -1):  # build [P4, P3]
@@ -280,6 +294,7 @@ class BevResnetFpn(bev_feature_extractor.BevFeatureExtractor):
                             C_i=feature_dict[f'C{level}'], 
                             P_j=pyramid_dict[f'P{level+1}'],
                             scope='build_P%d' % level)
+                #for level in range(5, l_down - 1, -1):
                 for level in range(l_top, l_down - 1, -1):
                     pyramid_dict[f'P{level}'] = slim.conv2d(pyramid_dict[f'P{level}'],
                             num_outputs=self.FPN_CHANNEL, 
@@ -304,6 +319,18 @@ class BevResnetFpn(bev_feature_extractor.BevFeatureExtractor):
                                  stride=2, 
                                  scope='P7_conv')
                         pyramid_dict['P7'] = p7
+
+        return pyramid_dict
+
+ 
+    def build(self,
+              inputs,
+              is_training,
+              scope='bev_resnet'):
+
+
+        feature_dict = self.build_resnet(inputs, is_training, scope)
+        pyramid_dict = self.build_fpn(feature_dict)
 
         return pyramid_dict
 

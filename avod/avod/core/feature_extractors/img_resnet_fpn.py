@@ -234,17 +234,11 @@ class ImgResnetFpn(img_feature_extractor.ImgFeatureExtractor):
             add_f = 0.5*upsample_p + 0.5*reduce_dim_c
             return add_f
 
-    def build(self,
+    def build_resnet(self,
               inputs,
               is_training,
               scope='img_resnet'):
-
-        resnet_config = self.config
-        resnet_name = resnet_config.resnet_name
-        pyramid_levels = resnet_config.pyramid_levels
-        use_p5_at_p6 = resnet_config.use_p5_at_p6
-        use_relu_at_fusion = resnet_config.use_relu_at_fusion
-        weight_decay = resnet_config.weight_decay
+        resnet_name = self.config.resnet_name
         if resnet_name.endswith('b'):
             get_resnet_fn = self.get_resnet_v1_b_base
         elif resnet_name.endswith('d'):
@@ -253,13 +247,22 @@ class ImgResnetFpn(img_feature_extractor.ImgFeatureExtractor):
             raise ValueError("resnet_name erro....")
 
         scope += resnet_name[6:]
-        print('Building bev feature extractor: ', scope)
+        print('Building img feature extractor: ', scope)
         _, feature_dict = get_resnet_fn(input_x=inputs, scope=scope,
                                         bottleneck_nums=self.BOTTLENECK_NUM_DICT[resnet_name],
                                         base_channels=self.BASE_CHANNELS_DICT[resnet_name],
                                         is_training=is_training, freeze_norm=True,
                                         freeze=self.FREEZE_BLOCKS)
 
+    def build_fpn(self, feature_dict, fuse_at_p5=False):
+
+        resnet_config = self.config
+        resnet_name = resnet_config.resnet_name
+        pyramid_levels = resnet_config.pyramid_levels
+        use_p5_at_p6 = resnet_config.use_p5_at_p6
+        use_relu_at_fusion = resnet_config.use_relu_at_fusion
+        weight_decay = resnet_config.weight_decay
+ 
         pyramid_dict = {}
         with tf.variable_scope('img_build_feature_pyramid'):
         #FPN part
@@ -268,12 +271,18 @@ class ImgResnetFpn(img_feature_extractor.ImgFeatureExtractor):
                     activation_fn=None, 
                     normalizer_fn=None):
 
-                P5 = slim.conv2d(feature_dict['C5'],
+                if not fuse_at_p5:
+                    P5 = slim.conv2d(feature_dict['C5'],
                                  num_outputs=self.FPN_CHANNEL,
                                  kernel_size=[1, 1],
                                  stride=1, scope='build_P5')
+                    pyramid_dict['P5'] = P5
+                else:
+                    if 'P5' not in feature_dict:
+                        raise ValueError('P5 should be fused and save at feature dict.')
+                    else:
+                        pyramid_dict['P5'] = feature_dict['P5']
 
-                pyramid_dict['P5'] = P5
 
                 l_top, l_down = int(pyramid_levels[-1][-1]), int(pyramid_levels[0][-1])
                 for level in range(4, l_down - 1, -1):  # build [P4, P3]
@@ -306,6 +315,17 @@ class ImgResnetFpn(img_feature_extractor.ImgFeatureExtractor):
                                  scope='P7_conv')
                         pyramid_dict['P7'] = p7
 
+
+        return pyramid_dict
+
+    
+    def build(self,
+              inputs,
+              is_training,
+              scope='img_resnet'):
+
+        feature_dict = self.build_resnet(inputs, is_training, scope)
+        pyramid_dict = self.build_fpn(feature_dict)
 
         return pyramid_dict
 
