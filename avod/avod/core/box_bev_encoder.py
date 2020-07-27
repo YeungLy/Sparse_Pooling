@@ -15,7 +15,7 @@ def box_bev_to_iou_h_format(boxes_bev):
     boxes_iou_h_format = []
     for box_bev in boxes_bev:
         xc, yc, w, h, ry = box_bev
-        angle = ry / 180 * np.pi
+        angle = ry / np.pi * 180
         box_bev_pts = cv2.boxPoints(((xc, yc), (w, h), angle))  #shape: (4,2)
         xmin = np.min(box_bev_pts[:, 0])
         ymin = np.min(box_bev_pts[:, 1])
